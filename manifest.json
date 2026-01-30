@@ -1,0 +1,43 @@
+{
+    "manifest_version": 3,
+    "name": "Gemini Multi-Gems Controller",
+    "version": "1.0",
+    "description": "Control multiple Gemini Gems in a split view.",
+    "permissions": [
+        "storage",
+        "declarativeNetRequest"
+    ],
+    "host_permissions": [
+        "https://gemini.google.com/*"
+    ],
+    "action": {
+        "default_popup": "popup.html"
+    },
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://gemini.google.com/*"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "css": [
+                "styles.css"
+            ],
+            "run_at": "document_end",
+            "all_frames": true
+        }
+    ],
+    "declarative_net_request": {
+        "rule_resources": [
+            {
+                "id": "ruleset_1",
+                "enabled": true,
+                "path": "rules.json"
+            }
+        ]
+    }
+}

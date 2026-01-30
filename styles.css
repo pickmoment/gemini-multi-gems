@@ -1,0 +1,98 @@
+/* Grid Layout */
+#mgem-grid-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  z-index: 99998;
+  display: grid;
+  background: #131314;
+  /* Default 2x1 */
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+}
+
+/* Frame Wrapper */
+.mgem-frame-wrapper {
+  background: #131314;
+  border-right: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mgem-frame-wrapper:last-child {
+  border-right: none;
+}
+
+.mgem-frame-header {
+  height: 32px;
+  background: #2d2e2f;
+  border-bottom: 1px solid #444;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+}
+
+.mgem-frame-header select {
+  background: transparent;
+  color: #e3e3e3;
+  border: none;
+  font-family: 'Google Sans', sans-serif;
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+  width: 20%;
+  /* Reduced to half size */
+}
+
+.mgem-url-display {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.2);
+  border: none;
+  color: #888;
+  font-size: 11px;
+  margin-left: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-overflow: ellipsis;
+}
+
+.mgem-frame-header select option {
+  background: #2d2e2f;
+  color: #e3e3e3;
+}
+
+.mgem-frame-wrapper iframe {
+  width: 100%;
+  flex: 1;
+  border: none;
+}
+
+.mgem-frame-wrapper.mgem-maximized {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 10000;
+  border: none;
+}
+
+.mgem-controls-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 24px;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 10px;
+  color: #aaa;
+  pointer-events: none;
+  /* Let clicks pass through if needed, but maybe we want controls here */
+}
