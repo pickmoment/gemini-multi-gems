@@ -103,26 +103,35 @@ document.addEventListener('DOMContentLoaded', () => {
     // Custom Layout
     const rowsInput = document.getElementById('custom-rows');
     const colsInput = document.getElementById('custom-cols');
-    const applyCustomBtn = document.getElementById('layout-custom-apply');
 
-    console.log('[MGem Popup] Custom grid elements:', { rowsInput, colsInput, applyCustomBtn });
+    console.log('[MGem Popup] Custom grid elements:', { rowsInput, colsInput });
 
-    if (applyCustomBtn && rowsInput && colsInput) {
-        applyCustomBtn.addEventListener('click', () => {
-            console.log('[MGem Popup] Apply clicked');
-            const r = parseInt(rowsInput.value) || 1;
-            const c = parseInt(colsInput.value) || 1;
-            const finalR = Math.max(1, Math.min(5, r));
-            const finalC = Math.max(1, Math.min(5, c));
+    // Auto-apply layout changes on input
+    function applyLayoutChange() {
+        const r = parseInt(rowsInput.value) || 1;
+        const c = parseInt(colsInput.value) || 1;
+        const finalR = Math.max(1, Math.min(5, r));
+        const finalC = Math.max(1, Math.min(5, c));
 
-            console.log('[MGem Popup] Setting layout to:', `${finalR}x${finalC}`);
+        console.log('[MGem Popup] Setting layout to:', `${finalR}x${finalC}`);
 
-            rowsInput.value = finalR;
-            colsInput.value = finalC;
+        rowsInput.value = finalR;
+        colsInput.value = finalC;
 
-            currentLayout = `${finalR}x${finalC}`;
-            updateLayoutButtons(currentLayout);
+        currentLayout = `${finalR}x${finalC}`;
+        updateLayoutButtons(currentLayout);
+
+        // Auto-save layout change
+        chrome.storage.local.set({ layout: currentLayout }, () => {
+            console.log('[MGem Popup] Auto-saved layout:', currentLayout);
         });
+    }
+
+    if (rowsInput && colsInput) {
+        rowsInput.addEventListener('input', applyLayoutChange);
+        rowsInput.addEventListener('change', applyLayoutChange);
+        colsInput.addEventListener('input', applyLayoutChange);
+        colsInput.addEventListener('change', applyLayoutChange);
     } else {
         console.error('[MGem Popup] Custom grid elements not found!');
     }
@@ -167,6 +176,56 @@ document.addEventListener('DOMContentLoaded', () => {
     function addGemInput(nameValue, urlValue) {
         const div = document.createElement('div');
         div.className = 'url-item';
+        div.draggable = true;
+
+        // Drag and Drop Event Handlers
+        div.addEventListener('dragstart', (e) => {
+            div.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', div.innerHTML);
+        });
+
+        div.addEventListener('dragend', (e) => {
+            div.classList.remove('dragging');
+            // Remove drag-over class from all items
+            container.querySelectorAll('.url-item').forEach(item => {
+                item.classList.remove('drag-over');
+            });
+        });
+
+        div.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+
+            const draggingItem = container.querySelector('.dragging');
+            if (draggingItem && draggingItem !== div) {
+                div.classList.add('drag-over');
+            }
+        });
+
+        div.addEventListener('dragleave', (e) => {
+            div.classList.remove('drag-over');
+        });
+
+        div.addEventListener('drop', (e) => {
+            e.preventDefault();
+            div.classList.remove('drag-over');
+
+            const draggingItem = container.querySelector('.dragging');
+            if (draggingItem && draggingItem !== div) {
+                // Determine if we should insert before or after
+                const rect = div.getBoundingClientRect();
+                const midpoint = rect.top + rect.height / 2;
+
+                if (e.clientY < midpoint) {
+                    container.insertBefore(draggingItem, div);
+                } else {
+                    container.insertBefore(draggingItem, div.nextSibling);
+                }
+
+                saveGems(); // Auto-save after reordering
+            }
+        });
 
         const nameInput = document.createElement('input');
         nameInput.type = 'text';
