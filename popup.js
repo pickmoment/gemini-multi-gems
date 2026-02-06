@@ -128,9 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (rowsInput && colsInput) {
-        rowsInput.addEventListener('input', applyLayoutChange);
         rowsInput.addEventListener('change', applyLayoutChange);
-        colsInput.addEventListener('input', applyLayoutChange);
         colsInput.addEventListener('change', applyLayoutChange);
     } else {
         console.error('[MGem Popup] Custom grid elements not found!');
