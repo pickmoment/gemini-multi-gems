@@ -1,46 +1,87 @@
 // Check if we are in the top-level frame
 const isTopLevel = window.self === window.top;
 
-// Configuration
-const DEFAULT_URLS = [
-    "https://gemini.google.com/app"
-];
+// Detect current service
+const SERVICE_TYPE = (() => {
+    const hostname = window.location.hostname;
+    if (hostname.includes('gemini.google.com')) return 'gemini';
+    if (hostname.includes('chat.openai.com') || hostname.includes('chatgpt.com')) return 'chatgpt';
+    return 'unknown';
+})();
+
+// Service-specific configuration
+const SERVICE_CONFIG = {
+    gemini: {
+        defaultUrl: 'https://gemini.google.com/app',
+        gemsViewUrl: 'https://gemini.google.com/gems/view',
+        storageKey: 'registeredGems',
+        layoutKey: 'geminiLayout',
+        frameConfigKey: 'geminiFrameConfig',
+        enabledKey: 'geminiEnabled',
+        serviceName: 'Gemini',
+        itemName: 'Gem'
+    },
+    chatgpt: {
+        defaultUrl: 'https://chatgpt.com/',
+        gemsViewUrl: 'https://chatgpt.com/gpts/mine',
+        storageKey: 'registeredGPTs',
+        layoutKey: 'chatgptLayout',
+        frameConfigKey: 'chatgptFrameConfig',
+        enabledKey: 'chatgptEnabled',
+        serviceName: 'ChatGPT',
+        itemName: 'GPT'
+    }
+};
+
+const CURRENT_CONFIG = SERVICE_CONFIG[SERVICE_TYPE] || SERVICE_CONFIG.gemini;
 
 if (isTopLevel) {
-    console.log("[MGem] Initializing Controller...");
+    console.log(`[${CURRENT_CONFIG.serviceName}] Checking if multi-view is enabled...`);
 
-    // Try multiple initialization strategies
-    if (document.body) {
-        console.log("[MGem] Body already exists, initializing immediately");
-        initController();
-    } else if (document.readyState === 'loading') {
-        console.log("[MGem] Document still loading, waiting for DOMContentLoaded");
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log("[MGem] DOMContentLoaded fired");
+    // Check if multi-view is enabled for this service
+    chrome.storage.local.get([CURRENT_CONFIG.enabledKey], (result) => {
+        const isEnabled = result[CURRENT_CONFIG.enabledKey] !== false; // default to true
+
+        if (!isEnabled) {
+            console.log(`[${CURRENT_CONFIG.serviceName}] Multi-view is disabled. Using normal page.`);
+            return; // Don't initialize the grid
+        }
+
+        console.log(`[${CURRENT_CONFIG.serviceName}] Multi-view is enabled. Initializing Controller...`);
+
+        // Try multiple initialization strategies
+        if (document.body) {
+            console.log(`[${CURRENT_CONFIG.serviceName}] Body already exists, initializing immediately`);
             initController();
-        });
-    } else {
-        console.log("[MGem] Document ready, using MutationObserver");
-        const observer = new MutationObserver((mutations, obs) => {
-            if (document.body) {
-                console.log("[MGem] Body detected via MutationObserver");
+        } else if (document.readyState === 'loading') {
+            console.log(`[${CURRENT_CONFIG.serviceName}] Document still loading, waiting for DOMContentLoaded`);
+            document.addEventListener('DOMContentLoaded', () => {
+                console.log(`[${CURRENT_CONFIG.serviceName}] DOMContentLoaded fired`);
                 initController();
-                obs.disconnect();
-            }
-        });
-        observer.observe(document.documentElement, { childList: true, subtree: true });
+            });
+        } else {
+            console.log(`[${CURRENT_CONFIG.serviceName}] Document ready, using MutationObserver`);
+            const observer = new MutationObserver((mutations, obs) => {
+                if (document.body) {
+                    console.log(`[${CURRENT_CONFIG.serviceName}] Body detected via MutationObserver`);
+                    initController();
+                    obs.disconnect();
+                }
+            });
+            observer.observe(document.documentElement, { childList: true, subtree: true });
 
-        // Fallback timeout
-        setTimeout(() => {
-            if (document.body && !document.getElementById('mgem-grid-container')) {
-                console.log("[MGem] Fallback timeout triggered");
-                initController();
-            }
-        }, 1000);
-    }
+            // Fallback timeout
+            setTimeout(() => {
+                if (document.body && !document.getElementById('mgem-grid-container')) {
+                    console.log(`[${CURRENT_CONFIG.serviceName}] Fallback timeout triggered`);
+                    initController();
+                }
+            }, 1000);
+        }
+    });
 } else {
     // logic for Child Frames
-    console.log("[MGem] Child frame loaded.");
+    console.log(`[${CURRENT_CONFIG.serviceName}] Child frame loaded.`);
     initChildFrame();
 }
 
@@ -64,25 +105,25 @@ function initController() {
     document.body.appendChild(grid);
 
     // 3. Load Frames
-    // Check storage first
-    chrome.storage.local.get(['registeredGems', 'frameConfig', 'layout'], (result) => {
-        let gems = result.registeredGems || [];
+    // Check storage first (use service-specific keys)
+    chrome.storage.local.get([CURRENT_CONFIG.storageKey, CURRENT_CONFIG.frameConfigKey, CURRENT_CONFIG.layoutKey], (result) => {
+        let gems = result[CURRENT_CONFIG.storageKey] || [];
         // Fallback for first run
         if (gems.length === 0) {
-            gems = [{ name: "Gemini", url: "https://gemini.google.com/app" }];
+            gems = [{ name: CURRENT_CONFIG.serviceName, url: CURRENT_CONFIG.defaultUrl }];
         }
 
         // frameConfig: { 0: "url", 1: "url" }
-        const frameConfig = result.frameConfig || {};
-        const initialLayout = result.layout || '1x1';
+        const frameConfig = result[CURRENT_CONFIG.frameConfigKey] || {};
+        const initialLayout = result[CURRENT_CONFIG.layoutKey] || '1x1';
 
-        console.log('[MGem] Loaded config:', { gems, frameConfig, initialLayout });
+        console.log(`[${CURRENT_CONFIG.serviceName}] Loaded config:`, { gems, frameConfig, initialLayout });
 
         renderGrid(gems, frameConfig, grid);
         applyLayout(initialLayout);
 
-        console.log('[MGem] Grid container:', grid);
-        console.log('[MGem] Grid children:', grid.children.length);
+        console.log(`[${CURRENT_CONFIG.serviceName}] Grid container:`, grid);
+        console.log(`[${CURRENT_CONFIG.serviceName}] Grid children:`, grid.children.length);
     });
 
     // 4. Listen anywhere
@@ -91,66 +132,29 @@ function initController() {
             applyLayout(message.layout);
         } else if (message.type === 'UPDATE_CONFIG') {
             chrome.tabs.reload(sender.tab ? sender.tab.id : undefined);
-        } else if (message.type === 'PARSE_GEM_LIST') {
-            console.log('[MGem] Parsing Gem list from page');
-
-            // Check if we're on the gems/view page
-            if (!window.location.href.includes('gemini.google.com/gems/view')) {
-                sendResponse({ error: 'Not on gems/view page' });
-                return true;
-            }
-
-            // Parse Gem list from DOM
-            const gems = [];
-            const gemRows = document.querySelectorAll('bot-list-row');
-
-            gemRows.forEach(row => {
-                try {
-                    const titleElement = row.querySelector('.title');
-                    const linkElement = row.querySelector('a.bot-row');
-
-                    if (titleElement && linkElement) {
-                        const name = titleElement.textContent.trim();
-                        const href = linkElement.getAttribute('href');
-
-                        if (name && href) {
-                            // Convert relative URL to absolute
-                            const url = `https://gemini.google.com${href}`;
-                            gems.push({ name, url });
-                        }
-                    }
-                } catch (e) {
-                    console.error('[MGem] Error parsing gem row:', e);
-                }
-            });
-
-            console.log('[MGem] Parsed gems:', gems);
-            sendResponse({ gems });
-            return true;
-        } else if (message.type === 'PARSE_GEM_LIST_FROM_FRAME') {
-            console.log('[MGem] Parsing Gem list from first frame');
-
-            // Get the first iframe
+        } else if (message.type === 'NAVIGATE_FIRST_FRAME') {
+            // Navigate the first frame to the gems/GPTs view page
             const firstIframe = document.querySelector('#gem-frame-0');
-            if (!firstIframe) {
-                sendResponse({ error: 'First frame not found. Please wait for the page to load.' });
-                return true;
+            if (firstIframe) {
+                firstIframe.src = message.url;
+                sendResponse({ success: true, message: 'Navigating to ' + message.url });
+            } else {
+                sendResponse({ success: false, error: 'First frame not found' });
             }
+            return true;
+        } else if (message.type === 'PARSE_GEM_LIST') {
+            console.log(`[${CURRENT_CONFIG.serviceName}] Parsing ${CURRENT_CONFIG.itemName} list from page`);
 
-            try {
-                // Access the iframe's document
-                const iframeDoc = firstIframe.contentDocument || firstIframe.contentWindow.document;
-
-                // Check if iframe is on gems/view page
-                const iframeUrl = firstIframe.contentWindow.location.href;
-                if (!iframeUrl.includes('gemini.google.com/gems/view')) {
-                    sendResponse({ error: 'Please navigate the first frame to https://gemini.google.com/gems/view' });
+            if (SERVICE_TYPE === 'gemini') {
+                // Check if we're on the gems/view page
+                if (!window.location.href.includes('gemini.google.com/gems/view')) {
+                    sendResponse({ error: 'Not on gems/view page' });
                     return true;
                 }
 
-                // Parse Gem list from iframe DOM
+                // Parse Gem list from DOM
                 const gems = [];
-                const gemRows = iframeDoc.querySelectorAll('bot-list-row');
+                const gemRows = document.querySelectorAll('bot-list-row');
 
                 gemRows.forEach(row => {
                     try {
@@ -168,14 +172,145 @@ function initController() {
                             }
                         }
                     } catch (e) {
-                        console.error('[MGem] Error parsing gem row:', e);
+                        console.error(`[${CURRENT_CONFIG.serviceName}] Error parsing gem row:`, e);
                     }
                 });
 
-                console.log('[MGem] Parsed gems from first frame:', gems);
+                console.log(`[${CURRENT_CONFIG.serviceName}] Parsed gems:`, gems);
                 sendResponse({ gems });
+            } else if (SERVICE_TYPE === 'chatgpt') {
+                // Check if we're on the GPTs page
+                if (!window.location.href.includes('/gpts/mine')) {
+                    sendResponse({ error: 'Not on GPTs page. Please navigate to https://chatgpt.com/gpts/mine' });
+                    return true;
+                }
+
+                // Parse GPT list from DOM
+                const gems = [];
+                // Find main element first
+                const mainElement = document.querySelector('main');
+                if (mainElement) {
+                    // Get all links within main that contain /g/
+                    const gptLinks = mainElement.querySelectorAll('a[href*="/g/"]');
+
+                    gptLinks.forEach(link => {
+                        try {
+                            const href = link.getAttribute('href');
+                            // Skip editor creation link and extract name from font-semibold span
+                            if (href && !href.includes('/gpts/editor') && href.includes('/g/g-')) {
+                                const nameElement = link.querySelector('.font-semibold') || link.querySelector('span[class*="font-semibold"]');
+                                const name = nameElement ? nameElement.textContent.trim() : 'GPT';
+
+                                if (name && name !== 'GPT 만들기' && name !== 'Create a GPT') {
+                                    // Convert relative URL to absolute
+                                    const url = href.startsWith('http') ? href : `https://chatgpt.com${href}`;
+                                    // Avoid duplicates
+                                    if (!gems.find(g => g.url === url)) {
+                                        gems.push({ name, url });
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.error(`[${CURRENT_CONFIG.serviceName}] Error parsing GPT link:`, e);
+                        }
+                    });
+                }
+
+                console.log(`[${CURRENT_CONFIG.serviceName}] Parsed GPTs:`, gems);
+                sendResponse({ gems });
+            }
+            return true;
+        } else if (message.type === 'PARSE_GEM_LIST_FROM_FRAME') {
+            console.log(`[${CURRENT_CONFIG.serviceName}] Parsing ${CURRENT_CONFIG.itemName} list from first frame`);
+
+            // Get the first iframe
+            const firstIframe = document.querySelector('#gem-frame-0');
+            if (!firstIframe) {
+                sendResponse({ error: 'First frame not found. Please wait for the page to load.' });
+                return true;
+            }
+
+            try {
+                // Access the iframe's document
+                const iframeDoc = firstIframe.contentDocument || firstIframe.contentWindow.document;
+                const iframeUrl = firstIframe.contentWindow.location.href;
+
+                if (SERVICE_TYPE === 'gemini') {
+                    // Check if iframe is on gems/view page
+                    if (!iframeUrl.includes('gemini.google.com/gems/view')) {
+                        sendResponse({ error: 'Please navigate the first frame to https://gemini.google.com/gems/view' });
+                        return true;
+                    }
+
+                    // Parse Gem list from iframe DOM
+                    const gems = [];
+                    const gemRows = iframeDoc.querySelectorAll('bot-list-row');
+
+                    gemRows.forEach(row => {
+                        try {
+                            const titleElement = row.querySelector('.title');
+                            const linkElement = row.querySelector('a.bot-row');
+
+                            if (titleElement && linkElement) {
+                                const name = titleElement.textContent.trim();
+                                const href = linkElement.getAttribute('href');
+
+                                if (name && href) {
+                                    // Convert relative URL to absolute
+                                    const url = `https://gemini.google.com${href}`;
+                                    gems.push({ name, url });
+                                }
+                            }
+                        } catch (e) {
+                            console.error(`[${CURRENT_CONFIG.serviceName}] Error parsing gem row:`, e);
+                        }
+                    });
+
+                    console.log(`[${CURRENT_CONFIG.serviceName}] Parsed gems from first frame:`, gems);
+                    sendResponse({ gems });
+                } else if (SERVICE_TYPE === 'chatgpt') {
+                    // Check if iframe is on GPTs page
+                    if (!iframeUrl.includes('/gpts/mine')) {
+                        sendResponse({ error: 'Please navigate the first frame to https://chatgpt.com/gpts/mine' });
+                        return true;
+                    }
+
+                    // Parse GPT list from iframe DOM
+                    const gems = [];
+                    // Find main element first
+                    const mainElement = iframeDoc.querySelector('main');
+                    if (mainElement) {
+                        // Get all links within main that contain /g/
+                        const gptLinks = mainElement.querySelectorAll('a[href*="/g/"]');
+
+                        gptLinks.forEach(link => {
+                            try {
+                                const href = link.getAttribute('href');
+                                // Skip editor creation link and extract name from font-semibold span
+                                if (href && !href.includes('/gpts/editor') && href.includes('/g/g-')) {
+                                    const nameElement = link.querySelector('.font-semibold') || link.querySelector('span[class*="font-semibold"]');
+                                    const name = nameElement ? nameElement.textContent.trim() : 'GPT';
+
+                                    if (name && name !== 'GPT 만들기' && name !== 'Create a GPT') {
+                                        // Convert relative URL to absolute
+                                        const url = href.startsWith('http') ? href : `https://chatgpt.com${href}`;
+                                        // Avoid duplicates
+                                        if (!gems.find(g => g.url === url)) {
+                                            gems.push({ name, url });
+                                        }
+                                    }
+                                }
+                            } catch (e) {
+                                console.error(`[${CURRENT_CONFIG.serviceName}] Error parsing GPT link:`, e);
+                            }
+                        });
+                    }
+
+                    console.log(`[${CURRENT_CONFIG.serviceName}] Parsed GPTs from first frame:`, gems);
+                    sendResponse({ gems });
+                }
             } catch (e) {
-                console.error('[MGem] Error accessing first frame:', e);
+                console.error(`[${CURRENT_CONFIG.serviceName}] Error accessing first frame:`, e);
                 sendResponse({ error: 'Cannot access first frame. Please make sure it has loaded.' });
             }
             return true;
@@ -203,33 +338,25 @@ function initController() {
                             const sortedGems = [...gems].sort((a, b) => b.url.length - a.url.length);
                             const match = sortedGems.find(g => data.url.includes(g.url));
 
-                            let targetUrl = "https://gemini.google.com/app"; // Default
+                            let targetUrl = CURRENT_CONFIG.defaultUrl; // Default
                             if (match) {
                                 targetUrl = match.url;
                             } else {
-                                // Fallback to generic "Gemini" if exists, or just keep default
-                                const defaultGem = gems.find(g => g.url === "https://gemini.google.com/app");
+                                // Fallback to default if exists
+                                const defaultGem = gems.find(g => g.url === CURRENT_CONFIG.defaultUrl);
                                 if (defaultGem) targetUrl = defaultGem.url;
                             }
 
                             const select = wrapper.querySelector('select');
                             if (select && select.value !== targetUrl) {
-                                // Only update if different to avoid potential loops or jitter
-                                // But wait, if user manually navigated, we WANT to update the select.
-                                // What if user just Selected from dropdown? That changes src -> triggers URL update -> triggers Select update.
-                                // Safe circularity: Select change -> Iframe Src -> URL Update -> Select value match.
-                                // If they match, no change.
-
-                                // What if user clicks link in Iframe? URL Update (new) -> Select value (old) -> Update Select to New? YES.
-
                                 select.value = targetUrl;
 
-                                // Update Storage
-                                chrome.storage.local.get(['frameConfig'], (res) => {
-                                    const cfg = res.frameConfig || {};
+                                // Update Storage (use service-specific key)
+                                chrome.storage.local.get([CURRENT_CONFIG.frameConfigKey], (res) => {
+                                    const cfg = res[CURRENT_CONFIG.frameConfigKey] || {};
                                     if (cfg[index] !== targetUrl) {
                                         cfg[index] = targetUrl;
-                                        chrome.storage.local.set({ frameConfig: cfg });
+                                        chrome.storage.local.set({ [CURRENT_CONFIG.frameConfigKey]: cfg });
                                     }
                                 });
                             }
@@ -255,9 +382,9 @@ function renderGrid(gems, frameConfig, container) {
 
 // Helper to get active Gems
 function getActiveGems(callback) {
-    chrome.storage.local.get(['registeredGems', 'frameConfig'], (result) => {
-        let gems = result.registeredGems || [{ name: "Gemini", url: "https://gemini.google.com/app" }];
-        const config = result.frameConfig || {};
+    chrome.storage.local.get([CURRENT_CONFIG.storageKey, CURRENT_CONFIG.frameConfigKey], (result) => {
+        let gems = result[CURRENT_CONFIG.storageKey] || [{ name: CURRENT_CONFIG.serviceName, url: CURRENT_CONFIG.defaultUrl }];
+        const config = result[CURRENT_CONFIG.frameConfigKey] || {};
         callback(gems, config);
     });
 }
@@ -282,10 +409,10 @@ function createFrame(index, container, gems, config) {
         select.appendChild(option);
     });
 
-    // Add a placeholder "Select a Gem" option at the beginning
+    // Add a placeholder "Select a Gem/GPT" option at the beginning
     const placeholderOption = document.createElement('option');
     placeholderOption.value = '';
-    placeholderOption.text = '-- Select a Gem --';
+    placeholderOption.text = `-- Select a ${CURRENT_CONFIG.itemName} --`;
     placeholderOption.disabled = true;
     select.insertBefore(placeholderOption, select.firstChild);
 
@@ -298,7 +425,7 @@ function createFrame(index, container, gems, config) {
     let autoLoadUrl = '';
 
     if (index === 0) {
-        const defaultGem = gems.find(g => g.url === 'https://gemini.google.com/app');
+        const defaultGem = gems.find(g => g.url === CURRENT_CONFIG.defaultUrl);
         if (defaultGem) {
             select.value = defaultGem.url;
             shouldAutoLoad = true;
@@ -314,18 +441,18 @@ function createFrame(index, container, gems, config) {
             iframe.src = newUrl;
         }
 
-        // Save to frameConfig
-        chrome.storage.local.get(['frameConfig'], (res) => {
-            const cfg = res.frameConfig || {};
+        // Save to frameConfig (use service-specific key)
+        chrome.storage.local.get([CURRENT_CONFIG.frameConfigKey], (res) => {
+            const cfg = res[CURRENT_CONFIG.frameConfigKey] || {};
             cfg[index] = newUrl;
-            chrome.storage.local.set({ frameConfig: cfg });
+            chrome.storage.local.set({ [CURRENT_CONFIG.frameConfigKey]: cfg });
         });
     });
 
     // Refresh Button
     const refreshBtn = document.createElement('button');
     refreshBtn.innerText = '↻';
-    refreshBtn.title = 'Reload Gem';
+    refreshBtn.title = `Reload ${CURRENT_CONFIG.itemName}`;
     refreshBtn.style.cssText = "background: transparent; border: none; color: #888; cursor: pointer; font-size: 16px; margin-left: 5px; padding: 2px 5px;";
 
     refreshBtn.onclick = () => {
@@ -342,7 +469,7 @@ function createFrame(index, container, gems, config) {
     urlDisplay.type = 'text';
     urlDisplay.className = 'mgem-url-display';
     urlDisplay.readOnly = true;
-    urlDisplay.value = 'No Gem selected';
+    urlDisplay.value = `No ${CURRENT_CONFIG.itemName} selected`;
 
     // Maximize Button
     const maxBtn = document.createElement('button');
@@ -492,33 +619,54 @@ function getElementByXpath(path) {
 }
 
 function handleInputUpdate(text) {
-    // 1. Try User-Specified XPath first (High Priority)
-    const userXpath = '//*[@id="app-root"]/main/side-navigation-v2/mat-sidenav-container/mat-sidenav-content/div/div[2]/chat-window/div/input-container/div/input-area-v2/div/div/div[1]/div/div/rich-textarea/div[1]/p';
-    let targetElement = getElementByXpath(userXpath);
+    let targetElement = null;
 
-    // 2. Fallback to generic contenteditable
-    if (!targetElement) {
-        targetElement = document.querySelector('div[contenteditable="true"]');
-        if (targetElement) {
-            const p = targetElement.querySelector('p');
-            if (p) targetElement = p;
+    if (SERVICE_TYPE === 'gemini') {
+        // Gemini-specific selectors
+        const userXpath = '//*[@id="app-root"]/main/side-navigation-v2/mat-sidenav-container/mat-sidenav-content/div/div[2]/chat-window/div/input-container/div/input-area-v2/div/div/div[1]/div/div/rich-textarea/div[1]/p';
+        targetElement = getElementByXpath(userXpath);
+
+        // Fallback to generic contenteditable
+        if (!targetElement) {
+            targetElement = document.querySelector('div[contenteditable="true"]');
+            if (targetElement) {
+                const p = targetElement.querySelector('p');
+                if (p) targetElement = p;
+            }
         }
+    } else if (SERVICE_TYPE === 'chatgpt') {
+        // ChatGPT-specific selectors
+        targetElement = document.querySelector('#prompt-textarea') ||
+                       document.querySelector('textarea[data-id="root"]') ||
+                       document.querySelector('div[contenteditable="true"]');
     }
 
     if (targetElement) {
         targetElement.focus();
 
         try {
-            const range = document.createRange();
-            range.selectNodeContents(targetElement);
-            const sel = window.getSelection();
-            sel.removeAllRanges();
-            sel.addRange(range);
+            if (targetElement.tagName === 'TEXTAREA') {
+                // For textarea elements (ChatGPT)
+                targetElement.value = text;
+                targetElement.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+                targetElement.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+            } else {
+                // For contenteditable elements
+                const range = document.createRange();
+                range.selectNodeContents(targetElement);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
 
-            document.execCommand('insertText', false, text);
+                document.execCommand('insertText', false, text);
+            }
         } catch (e) {
-            console.error("[MGem] execCommand failed:", e);
-            targetElement.textContent = text;
+            console.error(`[${CURRENT_CONFIG.serviceName}] execCommand failed:`, e);
+            if (targetElement.tagName === 'TEXTAREA') {
+                targetElement.value = text;
+            } else {
+                targetElement.textContent = text;
+            }
         }
 
         const genericEditor = targetElement.closest('div[contenteditable="true"]') || targetElement;
@@ -535,13 +683,25 @@ function handleTriggerSend(text) {
         handleInputUpdate(text);
     }
 
-    const sendButtonSelectors = [
-        'button[aria-label="Send"]',
-        'button[aria-label="Submit"]',
-        'button[aria-label*="전송"]',
-        'button.send-button',
-        'div[role="button"][aria-label="Send"]'
-    ];
+    let sendButtonSelectors = [];
+
+    if (SERVICE_TYPE === 'gemini') {
+        sendButtonSelectors = [
+            'button[aria-label="Send"]',
+            'button[aria-label="Submit"]',
+            'button[aria-label*="전송"]',
+            'button.send-button',
+            'div[role="button"][aria-label="Send"]'
+        ];
+    } else if (SERVICE_TYPE === 'chatgpt') {
+        sendButtonSelectors = [
+            'button[data-testid="send-button"]',
+            'button[aria-label="Send message"]',
+            'button[aria-label="Send prompt"]',
+            'button[type="submit"]',
+            'button svg.icon-send'
+        ];
+    }
 
     let sendButton = null;
     for (const selector of sendButtonSelectors) {
@@ -554,8 +714,10 @@ function handleTriggerSend(text) {
             sendButton.click();
         }, 100);
     } else {
-        console.warn("[MGem-Child] Send button not found. Attempting Enter key.");
-        const editor = document.querySelector('div[contenteditable="true"]');
+        console.warn(`[${CURRENT_CONFIG.serviceName}-Child] Send button not found. Attempting Enter key.`);
+        const editor = document.querySelector('div[contenteditable="true"]') ||
+                      document.querySelector('#prompt-textarea') ||
+                      document.querySelector('textarea[data-id="root"]');
         if (editor) {
             editor.focus();
             const enterEvent = new KeyboardEvent('keydown', {

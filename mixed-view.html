@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Multi-View</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #131314;
+            font-family: 'Google Sans', sans-serif;
+        }
+
+        #mgem-grid-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            display: grid;
+            background: #131314;
+            grid-template-columns: 1fr 1fr;
+            gap: 2px;
+        }
+
+        .mgem-frame-wrapper {
+            background: #131314;
+            border-right: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .mgem-frame-wrapper:last-child {
+            border-right: none;
+        }
+
+        .mgem-frame-header {
+            height: 32px;
+            background: #2d2e2f;
+            border-bottom: 1px solid #444;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            gap: 10px;
+        }
+
+        .mgem-frame-header select {
+            background: transparent;
+            color: #e3e3e3;
+            border: none;
+            font-family: 'Google Sans', sans-serif;
+            font-size: 13px;
+            outline: none;
+            cursor: pointer;
+            min-width: 150px;
+        }
+
+        .mgem-frame-header select option {
+            background: #2d2e2f;
+            color: #e3e3e3;
+        }
+
+        .mgem-url-display {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.2);
+            border: none;
+            color: #888;
+            font-size: 11px;
+            margin-left: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            text-overflow: ellipsis;
+        }
+
+        .mgem-frame-wrapper iframe {
+            width: 100%;
+            flex: 1;
+            border: none;
+        }
+
+        button {
+            background: transparent;
+            border: none;
+            color: #888;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 2px 5px;
+        }
+
+        button:hover {
+            color: #e3e3e3;
+        }
+
+        /* Layout Control Panel */
+        #layout-control {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #2d2e2f;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 12px;
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        #layout-control label {
+            color: #e3e3e3;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        #layout-control input[type="number"] {
+            width: 50px;
+            padding: 4px 8px;
+            background: #1e1f20;
+            border: 1px solid #555;
+            border-radius: 4px;
+            color: #e3e3e3;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        #layout-control input[type="number"]:focus {
+            outline: none;
+            border-color: #4285f4;
+        }
+
+        #layout-control span {
+            color: #888;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Layout Control Panel -->
+    <div id="layout-control">
+        <label>Layout Grid:</label>
+        <input type="number" id="layout-rows" min="1" max="5" value="2">
+        <span>×</span>
+        <input type="number" id="layout-cols" min="1" max="5" value="2">
+    </div>
+
+    <div id="mgem-grid-container"></div>
+    <script src="mixed-view.js"></script>
+</body>
+</html>

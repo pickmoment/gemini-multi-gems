@@ -1,14 +1,22 @@
 {
     "manifest_version": 3,
-    "name": "Gemini Multi-Gems Controller",
-    "version": "1.0",
-    "description": "Control multiple Gemini Gems in a split view.",
+    "name": "AI Multi-Chat",
+    "version": "2.1",
+    "description": "Control multiple Gemini Gems and ChatGPT GPTs in a split view, or mix them in a single view.",
+    "icons": {
+        "16": "ai_multi_chat_16x16.png",
+        "48": "ai_multi_chat_48x48.png",
+        "128": "ai_multi_chat_128x128.png"
+    },
     "permissions": [
         "storage",
-        "declarativeNetRequest"
+        "declarativeNetRequest",
+        "activeTab"
     ],
     "host_permissions": [
-        "https://gemini.google.com/*"
+        "https://gemini.google.com/*",
+        "https://chat.openai.com/*",
+        "https://chatgpt.com/*"
     ],
     "action": {
         "default_popup": "popup.html"
@@ -20,6 +28,20 @@
         {
             "matches": [
                 "https://gemini.google.com/*"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "css": [
+                "styles.css"
+            ],
+            "run_at": "document_end",
+            "all_frames": true
+        },
+        {
+            "matches": [
+                "https://chat.openai.com/*",
+                "https://chatgpt.com/*"
             ],
             "js": [
                 "content.js"
