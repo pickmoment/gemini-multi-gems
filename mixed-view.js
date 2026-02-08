@@ -65,30 +65,8 @@ function initMixedView() {
         renderGrid(allItems, frameConfig, grid, initialLayout);
         applyLayout(initialLayout);
 
-        // Layout change handlers
-        function updateLayout() {
-            const r = parseInt(rowsInput.value) || 2;
-            const c = parseInt(colsInput.value) || 2;
-            const finalR = Math.max(1, Math.min(5, r));
-            const finalC = Math.max(1, Math.min(5, c));
-
-            rowsInput.value = finalR;
-            colsInput.value = finalC;
-
-            const newLayout = `${finalR}x${finalC}`;
-
-            // Save layout
-            chrome.storage.local.set({ [MIXED_VIEW_LAYOUT_KEY]: newLayout }, () => {
-                console.log('[Mixed View] Layout saved:', newLayout);
-            });
-
-            // Re-render grid with new layout
-            renderGrid(allItems, frameConfig, grid, newLayout);
-            applyLayout(newLayout);
-        }
-
-        rowsInput.addEventListener('change', updateLayout);
-        colsInput.addEventListener('change', updateLayout);
+        // Store allItems for later use
+        window.mixedViewData = { allItems, frameConfig };
     });
 }
 
@@ -253,6 +231,99 @@ if (document.readyState === 'loading') {
     initMixedView();
 }
 
+// Update select options in existing frames
+function updateFrameSelects(allItems) {
+    const grid = document.getElementById('mgem-grid-container');
+    const currentFrames = grid.querySelectorAll('.mgem-frame-wrapper');
+
+    currentFrames.forEach((wrapper, index) => {
+        const select = wrapper.querySelector('select');
+        if (!select) return;
+
+        // Save current selection
+        const currentValue = select.value;
+
+        // Clear existing options
+        select.innerHTML = '';
+
+        // Add placeholder option
+        const placeholderOption = document.createElement('option');
+        placeholderOption.value = '';
+        placeholderOption.text = '-- Select AI --';
+        placeholderOption.disabled = true;
+        if (!currentValue) {
+            placeholderOption.selected = true;
+        }
+        select.appendChild(placeholderOption);
+
+        // Group by service
+        const geminiOptgroup = document.createElement('optgroup');
+        geminiOptgroup.label = 'Gemini Gems';
+
+        const chatgptOptgroup = document.createElement('optgroup');
+        chatgptOptgroup.label = 'ChatGPT GPTs';
+
+        allItems.forEach(item => {
+            const option = document.createElement('option');
+            option.value = item.url;
+            option.text = item.name;
+
+            if (item.service === 'gemini') {
+                geminiOptgroup.appendChild(option);
+            } else {
+                chatgptOptgroup.appendChild(option);
+            }
+        });
+
+        select.appendChild(geminiOptgroup);
+        select.appendChild(chatgptOptgroup);
+
+        // Restore previous selection if it still exists
+        if (currentValue) {
+            const optionExists = Array.from(select.options).some(opt => opt.value === currentValue);
+            if (optionExists) {
+                select.value = currentValue;
+            } else {
+                select.value = '';
+            }
+        }
+    });
+}
+
+// Adjust frame count without losing content
+function adjustFrameCount(newLayout, allItems) {
+    const grid = document.getElementById('mgem-grid-container');
+    const [newRows, newCols] = newLayout.split('x').map(Number);
+    const newTotalFrames = newRows * newCols;
+    const currentFrames = grid.querySelectorAll('.mgem-frame-wrapper');
+    const currentCount = currentFrames.length;
+
+    console.log(`[Mixed View] Adjusting frames: ${currentCount} -> ${newTotalFrames}`);
+
+    if (newTotalFrames > currentCount) {
+        // Add new frames
+        const { frameConfig } = window.mixedViewData || { frameConfig: {} };
+        for (let i = currentCount; i < newTotalFrames; i++) {
+            const wrapper = createFrameWrapper(i, allItems, frameConfig);
+            grid.appendChild(wrapper);
+        }
+    } else if (newTotalFrames < currentCount) {
+        // Remove excess frames
+        for (let i = currentCount - 1; i >= newTotalFrames; i--) {
+            const wrapper = grid.querySelector(`#gem-frame-wrapper-${i}`);
+            if (wrapper) {
+                wrapper.remove();
+            }
+        }
+    }
+
+    // Update all frame selects with latest items
+    updateFrameSelects(allItems);
+
+    // Apply new layout
+    applyLayout(newLayout);
+}
+
 // Listen for messages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'UPDATE_MIXED_VIEW') {
@@ -260,15 +331,43 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         window.location.reload();
     } else if (message.type === 'UPDATE_LAYOUT') {
         console.log('[Mixed View] Updating layout to:', message.layout);
-        const rowsInput = document.getElementById('layout-rows');
-        const colsInput = document.getElementById('layout-cols');
 
-        const [rows, cols] = message.layout.split('x').map(Number);
-        rowsInput.value = rows;
-        colsInput.value = cols;
+        // Reload items from storage to get latest Gems/GPTs
+        chrome.storage.local.get([
+            SERVICE_CONFIG.gemini.storageKey,
+            SERVICE_CONFIG.chatgpt.storageKey
+        ], (result) => {
+            // Get Gemini Gems
+            let geminiGems = result[SERVICE_CONFIG.gemini.storageKey] || [];
+            if (geminiGems.length === 0) {
+                geminiGems = [{ name: 'Gemini', url: SERVICE_CONFIG.gemini.defaultUrl }];
+            }
 
-        // Reload to apply new layout
-        window.location.reload();
+            // Get ChatGPT GPTs
+            let chatgptGPTs = result[SERVICE_CONFIG.chatgpt.storageKey] || [];
+            if (chatgptGPTs.length === 0) {
+                chatgptGPTs = [{ name: 'ChatGPT', url: SERVICE_CONFIG.chatgpt.defaultUrl }];
+            }
+
+            // Combine all items with service label
+            const allItems = [
+                ...geminiGems.map(g => ({ ...g, service: 'gemini' })),
+                ...chatgptGPTs.map(g => ({ ...g, service: 'chatgpt' }))
+            ];
+
+            // Update stored data
+            if (window.mixedViewData) {
+                window.mixedViewData.allItems = allItems;
+            }
+
+            // Update layout without refresh
+            adjustFrameCount(message.layout, allItems);
+
+            // Save layout
+            chrome.storage.local.set({ [MIXED_VIEW_LAYOUT_KEY]: message.layout }, () => {
+                console.log('[Mixed View] Layout saved:', message.layout);
+            });
+        });
     }
     return true;
 });

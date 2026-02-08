@@ -129,7 +129,16 @@ function initController() {
     // 4. Listen anywhere
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.type === 'SET_LAYOUT') {
-            applyLayout(message.layout);
+            // Reload gems from storage to get latest list
+            chrome.storage.local.get([CURRENT_CONFIG.storageKey], (result) => {
+                let gems = result[CURRENT_CONFIG.storageKey] || [{ name: CURRENT_CONFIG.serviceName, url: CURRENT_CONFIG.defaultUrl }];
+
+                // Update all existing frame selects with latest gems
+                updateAllFrameSelects(gems);
+
+                // Apply layout
+                applyLayout(message.layout);
+            });
         } else if (message.type === 'UPDATE_CONFIG') {
             chrome.tabs.reload(sender.tab ? sender.tab.id : undefined);
         } else if (message.type === 'NAVIGATE_FIRST_FRAME') {
@@ -519,6 +528,50 @@ function createFrame(index, container, gems, config) {
     if (shouldAutoLoad) {
         urlDisplay.value = 'Loading...';
     }
+}
+
+function updateAllFrameSelects(gems) {
+    const container = document.getElementById('mgem-grid-container');
+    if (!container) return;
+
+    const wrappers = container.querySelectorAll('.mgem-frame-wrapper');
+    wrappers.forEach((wrapper) => {
+        const select = wrapper.querySelector('select');
+        if (!select) return;
+
+        // Save current selection
+        const currentValue = select.value;
+
+        // Clear existing options
+        select.innerHTML = '';
+
+        // Populate dropdown with latest Gems
+        gems.forEach(gem => {
+            const option = document.createElement('option');
+            option.value = gem.url;
+            option.text = gem.name;
+            select.appendChild(option);
+        });
+
+        // Add a placeholder "Select a Gem/GPT" option at the beginning
+        const placeholderOption = document.createElement('option');
+        placeholderOption.value = '';
+        placeholderOption.text = `-- Select ${CURRENT_CONFIG.itemName} --`;
+        placeholderOption.disabled = true;
+        select.insertBefore(placeholderOption, select.firstChild);
+
+        // Restore previous selection if it still exists
+        if (currentValue) {
+            const optionExists = Array.from(select.options).some(opt => opt.value === currentValue);
+            if (optionExists) {
+                select.value = currentValue;
+            } else {
+                select.value = '';
+            }
+        }
+
+        console.log(`[${CURRENT_CONFIG.serviceName}] Updated select options for frame`);
+    });
 }
 
 function applyLayout(layoutType) {

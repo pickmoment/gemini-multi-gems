@@ -82,8 +82,9 @@ function showMixedViewSettings() {
 
     const rowsInput = document.getElementById('mixed-custom-rows');
     const colsInput = document.getElementById('mixed-custom-cols');
-    const clearAllBtn = document.getElementById('mixed-clear-all-btn');
-    const refreshBtn = document.getElementById('mixed-refresh-btn');
+    const applyLayoutBtn = document.getElementById('mixed-apply-layout-btn');
+    const gotoGeminiBtn = document.getElementById('mixed-goto-gemini-btn');
+    const gotoChatGPTBtn = document.getElementById('mixed-goto-chatgpt-btn');
 
     // Load saved layout
     chrome.storage.local.get([MIXED_VIEW_LAYOUT_KEY], (result) => {
@@ -93,8 +94,8 @@ function showMixedViewSettings() {
         colsInput.value = cols;
     });
 
-    // Layout change handlers
-    function applyLayoutChange() {
+    // Apply layout button handler
+    applyLayoutBtn.addEventListener('click', () => {
         const r = parseInt(rowsInput.value) || 2;
         const c = parseInt(colsInput.value) || 2;
         const finalR = Math.max(1, Math.min(5, r));
@@ -106,39 +107,24 @@ function showMixedViewSettings() {
         const currentLayout = `${finalR}x${finalC}`;
 
         chrome.storage.local.set({ [MIXED_VIEW_LAYOUT_KEY]: currentLayout }, () => {
-            // Send message to update Mixed View
+            // Send message to update Mixed View without refresh
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 if (tabs[0]) {
                     chrome.tabs.sendMessage(tabs[0].id, { type: 'UPDATE_LAYOUT', layout: currentLayout });
                 }
             });
         });
-    }
-
-    rowsInput.addEventListener('change', applyLayoutChange);
-    colsInput.addEventListener('change', applyLayoutChange);
-
-    // Clear all frames
-    clearAllBtn.addEventListener('click', () => {
-        if (confirm('Clear all frame selections? This will reset all frames to empty.')) {
-            chrome.storage.local.set({ [MIXED_VIEW_FRAME_CONFIG_KEY]: {} }, () => {
-                chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                    if (tabs[0]) {
-                        chrome.tabs.reload(tabs[0].id);
-                    }
-                });
-                window.close();
-            });
-        }
     });
 
-    // Refresh page
-    refreshBtn.addEventListener('click', () => {
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs[0]) {
-                chrome.tabs.reload(tabs[0].id);
-            }
-        });
+    // Go to Gemini button
+    gotoGeminiBtn.addEventListener('click', () => {
+        chrome.tabs.create({ url: 'https://gemini.google.com/app' });
+        window.close();
+    });
+
+    // Go to ChatGPT button
+    gotoChatGPTBtn.addEventListener('click', () => {
+        chrome.tabs.create({ url: 'https://chatgpt.com/' });
         window.close();
     });
 }
@@ -269,8 +255,8 @@ function initServiceSettings(service) {
         });
     }
 
-    // Layout auto-apply
-    function applyLayoutChange() {
+    // Apply Layout button
+    saveBtn.addEventListener('click', () => {
         const r = parseInt(rowsInput.value) || 1;
         const c = parseInt(colsInput.value) || 1;
         const finalR = Math.max(1, Math.min(5, r));
@@ -280,24 +266,19 @@ function initServiceSettings(service) {
         colsInput.value = finalC;
 
         const currentLayout = `${finalR}x${finalC}`;
-        updateLayoutButtons(currentLayout, rowsInput, colsInput);
 
-        chrome.storage.local.set({ [config.layoutKey]: currentLayout });
-    }
-
-    if (rowsInput && colsInput) {
-        rowsInput.addEventListener('change', applyLayoutChange);
-        colsInput.addEventListener('change', applyLayoutChange);
-    }
-
-    // Refresh button (settings are auto-saved, just reload the page)
-    saveBtn.addEventListener('click', () => {
-        chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-            if (tabs[0]) {
-                chrome.tabs.reload(tabs[0].id);
-            }
+        // Save layout to storage
+        chrome.storage.local.set({ [config.layoutKey]: currentLayout }, () => {
+            // Send message to apply layout without refresh
+            chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+                if (tabs[0]) {
+                    chrome.tabs.sendMessage(tabs[0].id, {
+                        type: 'SET_LAYOUT',
+                        layout: currentLayout
+                    });
+                }
+            });
         });
-        window.close();
     });
 
     // Mixed View button

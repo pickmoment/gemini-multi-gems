@@ -185,7 +185,7 @@
       </div>
 
       <div class="controls">
-        <button id="gemini-save-btn" style="width: 100%; padding: 8px;">🔄 Refresh</button>
+        <button id="gemini-save-btn" style="width: 100%; padding: 8px;">✓ Apply</button>
         <button id="gemini-mixed-view-btn" style="width: 100%; padding: 8px; background: #9333ea;">🎭 Open Mixed View</button>
       </div>
     </div>
@@ -202,26 +202,19 @@
         <span style="display:flex; align-items:center; color: #888;">x</span>
         <input type="number" id="mixed-custom-cols" placeholder="Cols" min="1" max="5" value="2" style="flex:1; width: 60px; padding: 5px; border-radius: 4px; border: 1px solid #444; background: #2d2e2f; color: white;">
       </div>
-      <p style="font-size: 12px; color: #888; margin-top: 8px;">Changes will apply automatically</p>
-    </div>
-
-    <div style="margin-bottom: 15px; padding: 10px; background: #2d2e2f; border-radius: 8px;">
-      <div style="font-size: 13px; color: #ccc; margin-bottom: 8px;">Quick Actions</div>
-      <button id="mixed-clear-all-btn" style="width: 100%; padding: 8px; background: #d93025; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 8px; font-size: 13px;">
-        🗑️ Clear All Frames
-      </button>
-      <button id="mixed-refresh-btn" style="width: 100%; padding: 8px; background: #333; color: #e3e3e3; border: 1px solid #555; border-radius: 4px; cursor: pointer; font-size: 13px;">
-        🔄 Refresh Page
+      <button id="mixed-apply-layout-btn" style="width: 100%; padding: 8px; margin-top: 10px; background: #4285f4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
+        ✓ Apply
       </button>
     </div>
 
-    <div style="font-size: 12px; color: #888; padding: 10px; background: #1e1f20; border-radius: 8px;">
-      <div style="margin-bottom: 5px;">💡 <strong>Tips:</strong></div>
-      <ul style="margin: 5px 0; padding-left: 20px;">
-        <li>Select AI from dropdowns in each frame</li>
-        <li>Layout changes save automatically</li>
-        <li>Frame selections are remembered</li>
-      </ul>
+    <div style="margin-bottom: 15px;">
+      <div style="font-size: 14px; margin-bottom: 8px; color: #ccc;">Quick Access</div>
+      <button id="mixed-goto-gemini-btn" style="width: 100%; padding: 8px; margin-bottom: 8px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
+        🔵 Go to Gemini
+      </button>
+      <button id="mixed-goto-chatgpt-btn" style="width: 100%; padding: 8px; background: #10a37f; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
+        🟢 Go to ChatGPT
+      </button>
     </div>
   </div>
 
@@ -267,7 +260,7 @@
       </div>
 
       <div class="controls">
-        <button id="chatgpt-save-btn" style="width: 100%; padding: 8px;">🔄 Refresh</button>
+        <button id="chatgpt-save-btn" style="width: 100%; padding: 8px;">✓ Apply</button>
         <button id="chatgpt-mixed-view-btn" style="width: 100%; padding: 8px; background: #9333ea;">🎭 Open Mixed View</button>
       </div>
     </div>
