@@ -30,6 +30,7 @@
                 "https://gemini.google.com/*"
             ],
             "js": [
+                "custom-select.js",
                 "content.js"
             ],
             "css": [
@@ -44,6 +45,7 @@
                 "https://chatgpt.com/*"
             ],
             "js": [
+                "custom-select.js",
                 "content.js"
             ],
             "css": [

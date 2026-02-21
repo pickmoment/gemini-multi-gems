@@ -93,51 +93,43 @@ function createFrameWrapper(index, allItems, frameConfig) {
     const header = document.createElement('div');
     header.className = 'mgem-frame-header';
 
-    // Service/Item selector
-    const select = document.createElement('select');
-    select.id = `gem-select-${index}`;
+    // Group by service for CustomSearchSelect
+    const geminiOptions = allItems.filter(item => item.service === 'gemini').map(g => ({ value: g.url, text: g.name }));
+    const chatgptOptions = allItems.filter(item => item.service === 'chatgpt').map(g => ({ value: g.url, text: g.name }));
 
-    // Add placeholder option first
-    const placeholderOption = document.createElement('option');
-    placeholderOption.value = '';
-    placeholderOption.text = '-- Select AI --';
-    placeholderOption.disabled = true;
-    placeholderOption.selected = true;
-    select.appendChild(placeholderOption);
+    const items = [
+        { label: 'Gemini Gems', options: geminiOptions },
+        { label: 'ChatGPT GPTs', options: chatgptOptions }
+    ];
 
-    // Group by service
-    const geminiOptgroup = document.createElement('optgroup');
-    geminiOptgroup.label = 'Gemini Gems';
-
-    const chatgptOptgroup = document.createElement('optgroup');
-    chatgptOptgroup.label = 'ChatGPT GPTs';
-
-    allItems.forEach(item => {
-        const option = document.createElement('option');
-        option.value = item.url;
-        option.text = item.name;
-
-        if (item.service === 'gemini') {
-            geminiOptgroup.appendChild(option);
-        } else {
-            chatgptOptgroup.appendChild(option);
+    const customSelect = new CustomSearchSelect({
+        items: items,
+        placeholder: '-- Select AI --',
+        value: frameConfig[index] || '',
+        isGrouped: true,
+        onChange: (e) => {
+            const newUrl = e.target.value;
+            const iframe = wrapper.querySelector('iframe');
+            if (iframe && newUrl) {
+                iframe.src = newUrl;
+                const urlDisplay = wrapper.querySelector('.mgem-url-display');
+                if (urlDisplay) {
+                    urlDisplay.value = newUrl;
+                }
+            }
         }
     });
 
-    select.appendChild(geminiOptgroup);
-    select.appendChild(chatgptOptgroup);
+    const selectElement = customSelect.getElement();
+    selectElement._customSelectObject = customSelect;
 
     // Set saved value (only load if explicitly configured)
     let shouldAutoLoad = false;
     let autoLoadUrl = '';
 
     if (frameConfig[index]) {
-        select.value = frameConfig[index];
         shouldAutoLoad = true;
         autoLoadUrl = frameConfig[index];
-    } else {
-        // Explicitly set placeholder as selected when no config
-        select.value = '';
     }
     // Don't auto-load any frame by default
 
@@ -159,7 +151,7 @@ function createFrameWrapper(index, allItems, frameConfig) {
     urlDisplay.readOnly = true;
     urlDisplay.value = 'No AI selected';
 
-    header.appendChild(select);
+    header.appendChild(selectElement);
     header.appendChild(refreshBtn);
     header.appendChild(urlDisplay);
 
@@ -175,15 +167,7 @@ function createFrameWrapper(index, allItems, frameConfig) {
         urlDisplay.value = autoLoadUrl;
     }
 
-    // Event listener for select change
-    select.addEventListener('change', (e) => {
-        const newUrl = e.target.value;
-        if (iframe && newUrl) {
-            iframe.src = newUrl;
-            urlDisplay.value = newUrl;
-        }
-        // Don't save frame config - Mixed View always starts fresh
-    });
+    // Handled by customSelect onChange callback
 
     // URL update listener
     iframe.addEventListener('load', () => {
@@ -237,56 +221,20 @@ function updateFrameSelects(allItems) {
     const currentFrames = grid.querySelectorAll('.mgem-frame-wrapper');
 
     currentFrames.forEach((wrapper, index) => {
-        const select = wrapper.querySelector('select');
-        if (!select) return;
+        const customSelectNode = wrapper.querySelector('.mgem-custom-select');
+        if (!customSelectNode || !customSelectNode._customSelectObject) return;
 
-        // Save current selection
-        const currentValue = select.value;
+        const customSelect = customSelectNode._customSelectObject;
 
-        // Clear existing options
-        select.innerHTML = '';
+        const geminiOptions = allItems.filter(item => item.service === 'gemini').map(g => ({ value: g.url, text: g.name }));
+        const chatgptOptions = allItems.filter(item => item.service === 'chatgpt').map(g => ({ value: g.url, text: g.name }));
 
-        // Add placeholder option
-        const placeholderOption = document.createElement('option');
-        placeholderOption.value = '';
-        placeholderOption.text = '-- Select AI --';
-        placeholderOption.disabled = true;
-        if (!currentValue) {
-            placeholderOption.selected = true;
-        }
-        select.appendChild(placeholderOption);
+        const items = [
+            { label: 'Gemini Gems', options: geminiOptions },
+            { label: 'ChatGPT GPTs', options: chatgptOptions }
+        ];
 
-        // Group by service
-        const geminiOptgroup = document.createElement('optgroup');
-        geminiOptgroup.label = 'Gemini Gems';
-
-        const chatgptOptgroup = document.createElement('optgroup');
-        chatgptOptgroup.label = 'ChatGPT GPTs';
-
-        allItems.forEach(item => {
-            const option = document.createElement('option');
-            option.value = item.url;
-            option.text = item.name;
-
-            if (item.service === 'gemini') {
-                geminiOptgroup.appendChild(option);
-            } else {
-                chatgptOptgroup.appendChild(option);
-            }
-        });
-
-        select.appendChild(geminiOptgroup);
-        select.appendChild(chatgptOptgroup);
-
-        // Restore previous selection if it still exists
-        if (currentValue) {
-            const optionExists = Array.from(select.options).some(opt => opt.value === currentValue);
-            if (optionExists) {
-                select.value = currentValue;
-            } else {
-                select.value = '';
-            }
-        }
+        customSelect.updateOptions(items);
     });
 }
 

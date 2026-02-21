@@ -356,18 +356,21 @@ function initController() {
                                 if (defaultGem) targetUrl = defaultGem.url;
                             }
 
-                            const select = wrapper.querySelector('select');
-                            if (select && select.value !== targetUrl) {
-                                select.value = targetUrl;
+                            const customSelectNode = wrapper.querySelector('.mgem-custom-select');
+                            if (customSelectNode && customSelectNode._customSelectObject) {
+                                const select = customSelectNode._customSelectObject;
+                                if (select.getValue() !== targetUrl) {
+                                    select.setValue(targetUrl);
 
-                                // Update Storage (use service-specific key)
-                                chrome.storage.local.get([CURRENT_CONFIG.frameConfigKey], (res) => {
-                                    const cfg = res[CURRENT_CONFIG.frameConfigKey] || {};
-                                    if (cfg[index] !== targetUrl) {
-                                        cfg[index] = targetUrl;
-                                        chrome.storage.local.set({ [CURRENT_CONFIG.frameConfigKey]: cfg });
-                                    }
-                                });
+                                    // Update Storage (use service-specific key)
+                                    chrome.storage.local.get([CURRENT_CONFIG.frameConfigKey], (res) => {
+                                        const cfg = res[CURRENT_CONFIG.frameConfigKey] || {};
+                                        if (cfg[index] !== targetUrl) {
+                                            cfg[index] = targetUrl;
+                                            chrome.storage.local.set({ [CURRENT_CONFIG.frameConfigKey]: cfg });
+                                        }
+                                    });
+                                }
                             }
                         });
                     }
@@ -407,27 +410,33 @@ function createFrame(index, container, gems, config) {
     const header = document.createElement('div');
     header.className = 'mgem-frame-header';
 
-    // Dropdown
-    const select = document.createElement('select');
+    // Format gems for CustomSearchSelect
+    const selectItems = gems.map(g => ({ value: g.url, text: g.name }));
 
-    // Populate dropdown with Gems
-    gems.forEach(gem => {
-        const option = document.createElement('option');
-        option.value = gem.url;
-        option.text = gem.name;
-        select.appendChild(option);
+    // Dropdown
+    const customSelect = new CustomSearchSelect({
+        items: selectItems,
+        placeholder: `-- Select a ${CURRENT_CONFIG.itemName} --`,
+        value: '', // ALWAYS start with placeholder selected
+        onChange: (e) => {
+            const newUrl = e.target.value;
+            const iframe = wrapper.querySelector('iframe');
+            if (iframe && newUrl) {
+                iframe.src = newUrl;
+            }
+
+            // Save to frameConfig (use service-specific key)
+            chrome.storage.local.get([CURRENT_CONFIG.frameConfigKey], (res) => {
+                const cfg = res[CURRENT_CONFIG.frameConfigKey] || {};
+                cfg[index] = newUrl;
+                chrome.storage.local.set({ [CURRENT_CONFIG.frameConfigKey]: cfg });
+            });
+        }
     });
 
-    // Add a placeholder "Select a Gem/GPT" option at the beginning
-    const placeholderOption = document.createElement('option');
-    placeholderOption.value = '';
-    placeholderOption.text = `-- Select a ${CURRENT_CONFIG.itemName} --`;
-    placeholderOption.disabled = true;
-    select.insertBefore(placeholderOption, select.firstChild);
-
-    // ALWAYS start with placeholder selected (ignore saved config on page load)
-    // This prevents simultaneous connections when refreshing the page
-    select.value = '';
+    const selectElement = customSelect.getElement();
+    // Cache the object instance on the element for easy access later
+    selectElement._customSelectObject = customSelect;
 
     // Special case: First frame (index 0) should auto-load default Gemini Gem
     let shouldAutoLoad = false;
@@ -436,27 +445,11 @@ function createFrame(index, container, gems, config) {
     if (index === 0) {
         const defaultGem = gems.find(g => g.url === CURRENT_CONFIG.defaultUrl);
         if (defaultGem) {
-            select.value = defaultGem.url;
+            customSelect.setValue(defaultGem.url);
             shouldAutoLoad = true;
             autoLoadUrl = defaultGem.url;
         }
     }
-
-    // Event Listener for change
-    select.addEventListener('change', (e) => {
-        const newUrl = e.target.value;
-        const iframe = wrapper.querySelector('iframe');
-        if (iframe && newUrl) {
-            iframe.src = newUrl;
-        }
-
-        // Save to frameConfig (use service-specific key)
-        chrome.storage.local.get([CURRENT_CONFIG.frameConfigKey], (res) => {
-            const cfg = res[CURRENT_CONFIG.frameConfigKey] || {};
-            cfg[index] = newUrl;
-            chrome.storage.local.set({ [CURRENT_CONFIG.frameConfigKey]: cfg });
-        });
-    });
 
     // Refresh Button
     const refreshBtn = document.createElement('button');
@@ -465,7 +458,7 @@ function createFrame(index, container, gems, config) {
     refreshBtn.style.cssText = "background: transparent; border: none; color: #888; cursor: pointer; font-size: 16px; margin-left: 5px; padding: 2px 5px;";
 
     refreshBtn.onclick = () => {
-        const currentUrl = select.value;
+        const currentUrl = customSelect.getValue();
         const iframe = wrapper.querySelector('iframe');
         if (iframe && currentUrl) {
             // Force reload by setting src again
@@ -509,7 +502,7 @@ function createFrame(index, container, gems, config) {
         }
     };
 
-    header.appendChild(select);
+    header.appendChild(selectElement);
     header.appendChild(refreshBtn);
     header.appendChild(urlDisplay);
     header.appendChild(maxBtn);
@@ -536,39 +529,15 @@ function updateAllFrameSelects(gems) {
 
     const wrappers = container.querySelectorAll('.mgem-frame-wrapper');
     wrappers.forEach((wrapper) => {
-        const select = wrapper.querySelector('select');
-        if (!select) return;
+        const customSelectNode = wrapper.querySelector('.mgem-custom-select');
+        if (!customSelectNode || !customSelectNode._customSelectObject) return;
 
-        // Save current selection
-        const currentValue = select.value;
+        const customSelect = customSelectNode._customSelectObject;
 
-        // Clear existing options
-        select.innerHTML = '';
+        // Format new items
+        const newItems = gems.map(g => ({ value: g.url, text: g.name }));
 
-        // Populate dropdown with latest Gems
-        gems.forEach(gem => {
-            const option = document.createElement('option');
-            option.value = gem.url;
-            option.text = gem.name;
-            select.appendChild(option);
-        });
-
-        // Add a placeholder "Select a Gem/GPT" option at the beginning
-        const placeholderOption = document.createElement('option');
-        placeholderOption.value = '';
-        placeholderOption.text = `-- Select ${CURRENT_CONFIG.itemName} --`;
-        placeholderOption.disabled = true;
-        select.insertBefore(placeholderOption, select.firstChild);
-
-        // Restore previous selection if it still exists
-        if (currentValue) {
-            const optionExists = Array.from(select.options).some(opt => opt.value === currentValue);
-            if (optionExists) {
-                select.value = currentValue;
-            } else {
-                select.value = '';
-            }
-        }
+        customSelect.updateOptions(newItems);
 
         console.log(`[${CURRENT_CONFIG.serviceName}] Updated select options for frame`);
     });
@@ -690,8 +659,8 @@ function handleInputUpdate(text) {
     } else if (SERVICE_TYPE === 'chatgpt') {
         // ChatGPT-specific selectors
         targetElement = document.querySelector('#prompt-textarea') ||
-                       document.querySelector('textarea[data-id="root"]') ||
-                       document.querySelector('div[contenteditable="true"]');
+            document.querySelector('textarea[data-id="root"]') ||
+            document.querySelector('div[contenteditable="true"]');
     }
 
     if (targetElement) {
@@ -769,8 +738,8 @@ function handleTriggerSend(text) {
     } else {
         console.warn(`[${CURRENT_CONFIG.serviceName}-Child] Send button not found. Attempting Enter key.`);
         const editor = document.querySelector('div[contenteditable="true"]') ||
-                      document.querySelector('#prompt-textarea') ||
-                      document.querySelector('textarea[data-id="root"]');
+            document.querySelector('#prompt-textarea') ||
+            document.querySelector('textarea[data-id="root"]');
         if (editor) {
             editor.focus();
             const enterEvent = new KeyboardEvent('keydown', {
