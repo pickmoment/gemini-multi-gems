@@ -193,10 +193,16 @@
     <div id="gemini-config-panel">
       <div style="margin-bottom: 15px;">
         <div style="font-size: 14px; margin-bottom: 8px; color: #ccc;">Gem URLs</div>
-        <button id="import-gems-btn"
-          style="width: 100%; padding: 8px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 8px; font-size: 13px;">
-          📥 Import from Gemini
-        </button>
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <button id="import-gems-btn"
+            style="flex: 1; padding: 8px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
+            📥 Import from Gemini
+          </button>
+          <button id="clear-gems-btn" title="Clear all except default"
+            style="padding: 8px; background: #d93025; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; width: 60px;">
+            Clear
+          </button>
+        </div>
         <div id="gemini-url-container"></div>
         <button id="gemini-add-url"
           style="width: 100%; padding: 8px; background: #333; color: #e3e3e3; border: 1px solid #555; border-radius: 4px; cursor: pointer; margin-top: 8px;">
@@ -276,10 +282,16 @@
     <div id="chatgpt-config-panel">
       <div style="margin-bottom: 15px;">
         <div style="font-size: 14px; margin-bottom: 8px; color: #ccc;">GPT URLs</div>
-        <button id="import-gpts-btn"
-          style="width: 100%; padding: 8px; background: #10a37f; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 8px; font-size: 13px;">
-          📥 Import from ChatGPT
-        </button>
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <button id="import-gpts-btn"
+            style="flex: 1; padding: 8px; background: #10a37f; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
+            📥 Import from ChatGPT
+          </button>
+          <button id="clear-gpts-btn" title="Clear all except default"
+            style="padding: 8px; background: #d93025; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; width: 60px;">
+            Clear
+          </button>
+        </div>
         <div id="chatgpt-url-container"></div>
         <button id="chatgpt-add-url"
           style="width: 100%; padding: 8px; background: #333; color: #e3e3e3; border: 1px solid #555; border-radius: 4px; cursor: pointer; margin-top: 8px;">

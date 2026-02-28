@@ -324,6 +324,26 @@ function initServiceSettings(service) {
         });
     }
 
+    // Clear button
+    const clearBtn = document.getElementById(service === 'gemini' ? 'clear-gems-btn' : 'clear-gpts-btn');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            if (confirm(`Are you sure you want to clear all ${config.itemName}s except the default?`)) {
+                // Determine default item
+                const defaultGem = { name: config.serviceName, url: config.defaultUrl };
+
+                // Clear container UI
+                container.innerHTML = '';
+
+                // Add default
+                addGemInput(defaultGem.name, defaultGem.url, prefix, container, config);
+
+                // Save
+                saveGems(prefix, container, config);
+            }
+        });
+    }
+
     // Apply Layout button
     saveBtn.addEventListener('click', () => {
         const r = parseInt(rowsInput.value) || 1;
