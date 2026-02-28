@@ -757,6 +757,15 @@ function handleInputUpdate(text) {
 }
 
 function handleTriggerSend(text) {
+    let wasHidden = false;
+    if (SERVICE_TYPE === 'gemini') {
+        const currentInputArea = document.querySelector('fieldset.input-area-container') || document.querySelector('input-area-v2');
+        wasHidden = currentInputArea && currentInputArea.classList.contains('mgem-element-hidden');
+        if (wasHidden) {
+            handleToggleUI(false); // Temporarily show UI to ensure input and send work
+        }
+    }
+
     if (text) {
         handleInputUpdate(text);
     }
@@ -790,6 +799,9 @@ function handleTriggerSend(text) {
     if (sendButton) {
         setTimeout(() => {
             sendButton.click();
+            if (wasHidden) {
+                setTimeout(() => handleToggleUI(true), 500); // Re-hide after small delay
+            }
         }, 100);
     } else {
         console.warn(`[${CURRENT_CONFIG.serviceName}-Child] Send button not found. Attempting Enter key.`);
@@ -817,6 +829,10 @@ function handleTriggerSend(text) {
                 which: 13
             });
             editor.dispatchEvent(enterPress);
+        }
+
+        if (wasHidden) {
+            setTimeout(() => handleToggleUI(true), 500); // Re-hide after small delay
         }
     }
 }
