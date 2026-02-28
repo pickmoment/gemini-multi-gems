@@ -96,6 +96,7 @@
   pointer-events: none;
   /* Let clicks pass through if needed, but maybe we want controls here */
 }
+
 /* Custom Select Dropdown Components */
 .mgem-custom-select {
   position: relative;
@@ -115,7 +116,8 @@
   justify-content: space-between;
   align-items: center;
   transition: background-color 0.2s;
-  height: 16px; /* Match native select height */
+  height: 16px;
+  /* Match native select height */
 }
 
 .mgem-select-selected:hover {
@@ -123,7 +125,8 @@
 }
 
 .mgem-select-selected.mgem-select-open {
-  background: rgba(255, 255, 255, 0.08); /* slightly lighter to indicate active state */
+  background: rgba(255, 255, 255, 0.08);
+  /* slightly lighter to indicate active state */
 }
 
 .mgem-select-text {
@@ -181,7 +184,8 @@
 }
 
 .mgem-select-search:focus {
-  border-color: #8ab4f8; /* Google blue accent focus */
+  border-color: #8ab4f8;
+  /* Google blue accent focus */
 }
 
 .mgem-select-options {
@@ -194,13 +198,16 @@
 .mgem-select-options::-webkit-scrollbar {
   width: 6px;
 }
+
 .mgem-select-options::-webkit-scrollbar-track {
   background: transparent;
 }
+
 .mgem-select-options::-webkit-scrollbar-thumb {
   background: #555;
   border-radius: 3px;
 }
+
 .mgem-select-options::-webkit-scrollbar-thumb:hover {
   background: #777;
 }
@@ -214,16 +221,18 @@
 
 .mgem-select-option:hover,
 .mgem-select-option-highlighted {
-  background: rgba(255, 255, 255, 0.08); /* Highlight on hover and keyboard nav */
+  background: rgba(255, 255, 255, 0.08);
+  /* Highlight on hover and keyboard nav */
 }
 
 .mgem-select-option-selected {
-  background: rgba(138, 180, 248, 0.15); /* Distinct selected state */
+  background: rgba(138, 180, 248, 0.15);
+  /* Distinct selected state */
   color: #8ab4f8;
 }
 
 .mgem-select-option-selected:hover {
-    background: rgba(138, 180, 248, 0.25);
+  background: rgba(138, 180, 248, 0.25);
 }
 
 .mgem-select-group-label {
@@ -236,6 +245,7 @@
   background: rgba(0, 0, 0, 0.15);
   margin-top: 4px;
 }
+
 .mgem-select-group-label:first-child {
   margin-top: 0;
 }
@@ -245,4 +255,45 @@
   text-align: center;
   color: #888;
   font-style: italic;
+}
+
+/* Gemini Input Area Toggle Button - Floating */
+.mgem-input-toggle {
+  position: fixed;
+  bottom: 8px;
+  /* Even closer to corner */
+  right: 8px;
+  background: var(--gem-sys-color--surface, #1e1f20);
+  color: var(--gem-sys-color--on-surface-variant, #e3e3e3);
+  border: 1px solid var(--gem-sys-color--outline, #444);
+  border-radius: 50%;
+  /* Make it circular */
+  width: 24px;
+  /* Smaller width */
+  height: 24px;
+  /* Smaller height */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 10px;
+  /* Smaller text/icon */
+  z-index: 100000;
+  opacity: 0.5;
+  /* Add transparency */
+  transition: all 0.2s ease-in-out;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.mgem-input-toggle:hover {
+  background: var(--gem-sys-color--surface-container-high, #2d2e2f);
+  opacity: 1;
+  /* Fully opaque on hover */
+  transform: scale(1.1);
+  /* Slightly larger pop on hover due to smaller size */
+}
+
+/* Hidden state for elements */
+.mgem-element-hidden {
+  display: none !important;
 }

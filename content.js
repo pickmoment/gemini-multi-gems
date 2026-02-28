@@ -79,10 +79,12 @@ if (isTopLevel) {
             }, 1000);
         }
     });
+    injectGeminiInputToggle();
 } else {
     // logic for Child Frames
     console.log(`[${CURRENT_CONFIG.serviceName}] Child frame loaded.`);
     initChildFrame();
+    injectGeminiInputToggle();
 }
 
 function initController() {
@@ -764,3 +766,53 @@ function handleTriggerSend(text) {
         }
     }
 }
+
+function injectGeminiInputToggle() {
+    if (SERVICE_TYPE !== 'gemini') return;
+
+    // Use MutationObserver to wait for the input area to appear
+    const observer = new MutationObserver(() => {
+        // Select the input area container.
+        const inputArea = document.querySelector('fieldset.input-area-container') || document.querySelector('input-area-v2');
+        if (inputArea && !document.getElementById('mgem-input-toggle-btn')) {
+            const toggleBtn = document.createElement('button');
+            toggleBtn.id = 'mgem-input-toggle-btn';
+            toggleBtn.className = 'mgem-input-toggle';
+            toggleBtn.innerHTML = '▼';
+            toggleBtn.title = '입력 영역 및 상단바 숨기기 / 보이기'; // "Hide / Show input area & top bar"
+
+            // Append floating button directly to body
+            document.body.appendChild(toggleBtn);
+
+            toggleBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+
+                const isCurrentlyShowing = toggleBtn.innerHTML === '▼';
+                const shouldHide = isCurrentlyShowing;
+
+                // Re-query the input area because Angular might have replaced the DOM node (e.g. going to zero-state)
+                const currentInputArea = document.querySelector('fieldset.input-area-container') || document.querySelector('input-area-v2');
+                if (currentInputArea) {
+                    currentInputArea.classList.toggle('mgem-element-hidden', shouldHide);
+                }
+
+                // Select and toggle Google Bar
+                const googleBar = document.querySelector('.boqOnegoogleliteOgbOneGoogleBar');
+                if (googleBar) {
+                    googleBar.classList.toggle('mgem-element-hidden', shouldHide);
+                }
+
+                // Also hide the zero-state welcome screen if it exists
+                const zeroStateArea = document.querySelector('modular-zero-state') || document.querySelector('.modular-zero-state-container');
+                if (zeroStateArea) {
+                    zeroStateArea.classList.toggle('mgem-element-hidden', shouldHide);
+                }
+
+                toggleBtn.innerHTML = shouldHide ? '▲' : '▼';
+            });
+        }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+}
+
