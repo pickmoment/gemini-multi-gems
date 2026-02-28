@@ -117,11 +117,11 @@
       border-radius: 50%;
     }
 
-    .toggle-switch input:checked + .toggle-slider {
+    .toggle-switch input:checked+.toggle-slider {
       background-color: #4285f4;
     }
 
-    .toggle-switch input:checked + .toggle-slider:before {
+    .toggle-switch input:checked+.toggle-slider:before {
       transform: translateX(24px);
     }
   </style>
@@ -131,14 +131,18 @@
   <!-- Service Selector (shown when not on Gemini or ChatGPT pages) -->
   <div id="service-selector" style="display: none;">
     <h2>Select AI Service</h2>
-    <p style="font-size: 13px; color: #ccc; margin-bottom: 15px;">This extension works on Gemini or ChatGPT pages. Please navigate to one of these services:</p>
-    <button id="goto-gemini-btn" style="width: 100%; padding: 10px; margin-bottom: 8px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
+    <p style="font-size: 13px; color: #ccc; margin-bottom: 15px;">This extension works on Gemini or ChatGPT pages.
+      Please navigate to one of these services:</p>
+    <button id="goto-gemini-btn"
+      style="width: 100%; padding: 10px; margin-bottom: 8px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
       🔵 Go to Gemini
     </button>
-    <button id="goto-chatgpt-btn" style="width: 100%; padding: 10px; margin-bottom: 8px; background: #10a37f; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
+    <button id="goto-chatgpt-btn"
+      style="width: 100%; padding: 10px; margin-bottom: 8px; background: #10a37f; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
       🟢 Go to ChatGPT
     </button>
-    <button id="goto-mixed-view-btn" style="width: 100%; padding: 10px; background: #9333ea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
+    <button id="goto-mixed-view-btn"
+      style="width: 100%; padding: 10px; background: #9333ea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
       🎭 Mixed View (Gemini + ChatGPT)
     </button>
   </div>
@@ -146,6 +150,31 @@
   <!-- Gemini Settings (shown on Gemini pages) -->
   <div id="gemini-settings" style="display: none;">
     <h2>Gemini Gems Setup</h2>
+
+    <!-- Global Input UI -->
+    <div style="margin-bottom: 15px; padding: 10px; background: #2d2e2f; border-radius: 8px;">
+      <div style="font-size: 14px; font-weight: 600; color: #e3e3e3; margin-bottom: 8px;">Target Frame Input</div>
+      <div id="gemini-target-checkboxes"
+        style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; font-size: 13px;">
+        <!-- Checkboxes injected here -->
+      </div>
+      <textarea id="gemini-global-input" placeholder="Type message... (Enter to send)" rows="2"
+        style="width: 100%; box-sizing: border-box; padding: 6px; background: #131314; color: white; border: 1px solid #444; border-radius: 4px; resize: none; margin-bottom: 8px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"></textarea>
+      <button id="gemini-global-send-btn"
+        style="width: 100%; background: #8ab4f8; color: #131314; font-weight: bold; padding: 8px;">Send</button>
+
+      <div style="border-top: 1px solid #444; margin-top: 12px; padding-top: 12px;">
+        <div style="font-size: 14px; font-weight: 600; color: #e3e3e3; margin-bottom: 8px;">Frame UI Visibility</div>
+        <div style="display: flex; gap: 8px;">
+          <button id="gemini-hide-ui-btn"
+            style="flex: 1; background: #333; color: #e3e3e3; border: 1px solid #555; padding: 6px; font-size: 12px;">Hide
+            UI</button>
+          <button id="gemini-show-ui-btn"
+            style="flex: 1; background: #333; color: #e3e3e3; border: 1px solid #555; padding: 6px; font-size: 12px;">Show
+            UI</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Enable/Disable Toggle -->
     <div style="margin-bottom: 15px; padding: 10px; background: #2d2e2f; border-radius: 8px;">
@@ -165,28 +194,31 @@
       <div style="margin-bottom: 15px;">
         <div style="font-size: 14px; margin-bottom: 8px; color: #ccc;">Gem URLs</div>
         <button id="import-gems-btn"
-        style="width: 100%; padding: 8px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 8px; font-size: 13px;">
-        📥 Import from Gemini
-      </button>
-      <div id="gemini-url-container"></div>
-      <button id="gemini-add-url"
-        style="width: 100%; padding: 8px; background: #333; color: #e3e3e3; border: 1px solid #555; border-radius: 4px; cursor: pointer; margin-top: 8px;">
-        + Add Gem URL
-      </button>
-    </div>
+          style="width: 100%; padding: 8px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 8px; font-size: 13px;">
+          📥 Import from Gemini
+        </button>
+        <div id="gemini-url-container"></div>
+        <button id="gemini-add-url"
+          style="width: 100%; padding: 8px; background: #333; color: #e3e3e3; border: 1px solid #555; border-radius: 4px; cursor: pointer; margin-top: 8px;">
+          + Add Gem URL
+        </button>
+      </div>
 
       <div style="margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 10px;">
         <div style="font-size: 14px; margin-bottom: 8px; color: #ccc;">Layout Grid</div>
         <div style="display: flex; gap: 8px; margin-top: 5px; align-items: center;">
-          <input type="number" id="gemini-custom-rows" placeholder="Rows" min="1" max="5" value="1" style="flex:1; width: 60px;">
+          <input type="number" id="gemini-custom-rows" placeholder="Rows" min="1" max="5" value="1"
+            style="flex:1; width: 60px;">
           <span style="display:flex; align-items:center;">x</span>
-          <input type="number" id="gemini-custom-cols" placeholder="Cols" min="1" max="5" value="1" style="flex:1; width: 60px;">
+          <input type="number" id="gemini-custom-cols" placeholder="Cols" min="1" max="5" value="1"
+            style="flex:1; width: 60px;">
         </div>
       </div>
 
       <div class="controls">
         <button id="gemini-save-btn" style="width: 100%; padding: 8px;">✓ Apply</button>
-        <button id="gemini-mixed-view-btn" style="width: 100%; padding: 8px; background: #9333ea;">🎭 Open Mixed View</button>
+        <button id="gemini-mixed-view-btn" style="width: 100%; padding: 8px; background: #9333ea;">🎭 Open Mixed
+          View</button>
       </div>
     </div>
   </div>
@@ -198,21 +230,26 @@
     <div style="margin-bottom: 15px;">
       <div style="font-size: 14px; margin-bottom: 8px; color: #ccc;">Layout Grid</div>
       <div style="display: flex; gap: 8px; margin-top: 5px; align-items: center;">
-        <input type="number" id="mixed-custom-rows" placeholder="Rows" min="1" max="5" value="2" style="flex:1; width: 60px; padding: 5px; border-radius: 4px; border: 1px solid #444; background: #2d2e2f; color: white;">
+        <input type="number" id="mixed-custom-rows" placeholder="Rows" min="1" max="5" value="2"
+          style="flex:1; width: 60px; padding: 5px; border-radius: 4px; border: 1px solid #444; background: #2d2e2f; color: white;">
         <span style="display:flex; align-items:center; color: #888;">x</span>
-        <input type="number" id="mixed-custom-cols" placeholder="Cols" min="1" max="5" value="2" style="flex:1; width: 60px; padding: 5px; border-radius: 4px; border: 1px solid #444; background: #2d2e2f; color: white;">
+        <input type="number" id="mixed-custom-cols" placeholder="Cols" min="1" max="5" value="2"
+          style="flex:1; width: 60px; padding: 5px; border-radius: 4px; border: 1px solid #444; background: #2d2e2f; color: white;">
       </div>
-      <button id="mixed-apply-layout-btn" style="width: 100%; padding: 8px; margin-top: 10px; background: #4285f4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
+      <button id="mixed-apply-layout-btn"
+        style="width: 100%; padding: 8px; margin-top: 10px; background: #4285f4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
         ✓ Apply
       </button>
     </div>
 
     <div style="margin-bottom: 15px;">
       <div style="font-size: 14px; margin-bottom: 8px; color: #ccc;">Quick Access</div>
-      <button id="mixed-goto-gemini-btn" style="width: 100%; padding: 8px; margin-bottom: 8px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
+      <button id="mixed-goto-gemini-btn"
+        style="width: 100%; padding: 8px; margin-bottom: 8px; background: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
         🔵 Go to Gemini
       </button>
-      <button id="mixed-goto-chatgpt-btn" style="width: 100%; padding: 8px; background: #10a37f; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
+      <button id="mixed-goto-chatgpt-btn"
+        style="width: 100%; padding: 8px; background: #10a37f; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">
         🟢 Go to ChatGPT
       </button>
     </div>
@@ -240,28 +277,31 @@
       <div style="margin-bottom: 15px;">
         <div style="font-size: 14px; margin-bottom: 8px; color: #ccc;">GPT URLs</div>
         <button id="import-gpts-btn"
-        style="width: 100%; padding: 8px; background: #10a37f; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 8px; font-size: 13px;">
-        📥 Import from ChatGPT
-      </button>
-      <div id="chatgpt-url-container"></div>
-      <button id="chatgpt-add-url"
-        style="width: 100%; padding: 8px; background: #333; color: #e3e3e3; border: 1px solid #555; border-radius: 4px; cursor: pointer; margin-top: 8px;">
-        + Add GPT URL
-      </button>
-    </div>
+          style="width: 100%; padding: 8px; background: #10a37f; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 8px; font-size: 13px;">
+          📥 Import from ChatGPT
+        </button>
+        <div id="chatgpt-url-container"></div>
+        <button id="chatgpt-add-url"
+          style="width: 100%; padding: 8px; background: #333; color: #e3e3e3; border: 1px solid #555; border-radius: 4px; cursor: pointer; margin-top: 8px;">
+          + Add GPT URL
+        </button>
+      </div>
 
       <div style="margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 10px;">
         <div style="font-size: 14px; margin-bottom: 8px; color: #ccc;">Layout Grid</div>
         <div style="display: flex; gap: 8px; margin-top: 5px; align-items: center;">
-          <input type="number" id="chatgpt-custom-rows" placeholder="Rows" min="1" max="5" value="1" style="flex:1; width: 60px;">
+          <input type="number" id="chatgpt-custom-rows" placeholder="Rows" min="1" max="5" value="1"
+            style="flex:1; width: 60px;">
           <span style="display:flex; align-items:center;">x</span>
-          <input type="number" id="chatgpt-custom-cols" placeholder="Cols" min="1" max="5" value="1" style="flex:1; width: 60px;">
+          <input type="number" id="chatgpt-custom-cols" placeholder="Cols" min="1" max="5" value="1"
+            style="flex:1; width: 60px;">
         </div>
       </div>
 
       <div class="controls">
         <button id="chatgpt-save-btn" style="width: 100%; padding: 8px;">✓ Apply</button>
-        <button id="chatgpt-mixed-view-btn" style="width: 100%; padding: 8px; background: #9333ea;">🎭 Open Mixed View</button>
+        <button id="chatgpt-mixed-view-btn" style="width: 100%; padding: 8px; background: #9333ea;">🎭 Open Mixed
+          View</button>
       </div>
     </div>
   </div>

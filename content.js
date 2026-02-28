@@ -130,7 +130,29 @@ function initController() {
 
     // 4. Listen anywhere
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.type === 'SET_LAYOUT') {
+        if (message.type === 'GLOBAL_TOGGLE_UI') {
+            broadcastMessage({ type: 'TOGGLE_UI', hide: message.hide });
+            sendResponse({ success: true });
+        } else if (message.type === 'GLOBAL_TRIGGER_SEND') {
+            const payload = { type: 'TRIGGER_SEND', text: message.text };
+            if (Array.isArray(message.target)) {
+                message.target.forEach(targetIndex => {
+                    const targetIframe = document.getElementById(`gem-frame-${targetIndex}`);
+                    if (targetIframe && targetIframe.contentWindow) {
+                        targetIframe.contentWindow.postMessage(payload, '*');
+                    }
+                });
+            } else if (message.target === 'all') {
+                broadcastMessage(payload);
+            } else {
+                const targetIndex = parseInt(message.target, 10);
+                const targetIframe = document.getElementById(`gem-frame-${targetIndex}`);
+                if (targetIframe && targetIframe.contentWindow) {
+                    targetIframe.contentWindow.postMessage(payload, '*');
+                }
+            }
+            sendResponse({ success: true });
+        } else if (message.type === 'SET_LAYOUT') {
             // Reload gems from storage to get latest list
             chrome.storage.local.get([CURRENT_CONFIG.storageKey], (result) => {
                 let gems = result[CURRENT_CONFIG.storageKey] || [{ name: CURRENT_CONFIG.serviceName, url: CURRENT_CONFIG.defaultUrl }];
@@ -634,8 +656,34 @@ function initChildFrame() {
             handleInputUpdate(data.text);
         } else if (data.type === 'TRIGGER_SEND') {
             handleTriggerSend(data.text);
+        } else if (data.type === 'TOGGLE_UI') {
+            handleToggleUI(data.hide);
         }
     });
+}
+
+function handleToggleUI(shouldHide) {
+    if (SERVICE_TYPE === 'gemini') {
+        const currentInputArea = document.querySelector('fieldset.input-area-container') || document.querySelector('input-area-v2');
+        if (currentInputArea) {
+            currentInputArea.classList.toggle('mgem-element-hidden', shouldHide);
+        }
+
+        const googleBar = document.querySelector('.boqOnegoogleliteOgbOneGoogleBar');
+        if (googleBar) {
+            googleBar.classList.toggle('mgem-element-hidden', shouldHide);
+        }
+
+        const greetingArea = document.querySelector('.greeting-container') || document.querySelector('.greeting');
+        if (greetingArea) {
+            greetingArea.classList.toggle('mgem-element-hidden', shouldHide);
+        }
+
+        const suggestionsContainer = document.querySelector('.input-area-suggestions') || document.querySelector('suggestion-chips');
+        if (suggestionsContainer) {
+            suggestionsContainer.classList.toggle('mgem-element-hidden', shouldHide);
+        }
+    }
 }
 
 function getElementByXpath(path) {
@@ -646,11 +694,17 @@ function handleInputUpdate(text) {
     let targetElement = null;
 
     if (SERVICE_TYPE === 'gemini') {
-        // Gemini-specific selectors
-        const userXpath = '//*[@id="app-root"]/main/side-navigation-v2/mat-sidenav-container/mat-sidenav-content/div/div[2]/chat-window/div/input-container/div/input-area-v2/div/div/div[1]/div/div/rich-textarea/div[1]/p';
-        targetElement = getElementByXpath(userXpath);
+        // 1. New specific css selector from user
+        const newSelector = 'rich-textarea > div.ql-editor.textarea.new-input-ui > p';
+        targetElement = document.querySelector(newSelector);
 
-        // Fallback to generic contenteditable
+        // 2. Previous XPath fallback
+        if (!targetElement) {
+            const userXpath = '//*[@id="app-root"]/main/side-navigation-v2/mat-sidenav-container/mat-sidenav-content/div/div[2]/chat-window/div/input-container/div/input-area-v2/div/div/div[1]/div/div/rich-textarea/div[1]/p';
+            targetElement = getElementByXpath(userXpath);
+        }
+
+        // 3. Generic fallback
         if (!targetElement) {
             targetElement = document.querySelector('div[contenteditable="true"]');
             if (targetElement) {

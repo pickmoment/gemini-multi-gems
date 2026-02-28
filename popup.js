@@ -173,6 +173,75 @@ function initServiceSettings(service) {
 
         gems.forEach(gem => addGemInput(gem.name, gem.url, prefix, container, config));
         updateLayoutButtons(savedLayout, rowsInput, colsInput);
+
+        // Setup Global Input UI (if it exists for this service)
+        const targetCheckboxes = document.getElementById(`${prefix}-target-checkboxes`);
+        const globalInput = document.getElementById(`${prefix}-global-input`);
+        const globalSendBtn = document.getElementById(`${prefix}-global-send-btn`);
+
+        if (targetCheckboxes && globalInput && globalSendBtn) {
+            updateTargetCheckboxes(savedLayout, targetCheckboxes);
+
+            const sendGlobalMessage = () => {
+                const text = globalInput.value.trim();
+                if (!text) return;
+
+                const checkedFrames = Array.from(targetCheckboxes.querySelectorAll('.target-frame-cb'))
+                    .filter(cb => cb.checked)
+                    .map(cb => parseInt(cb.value, 10));
+
+                if (checkedFrames.length === 0) return; // Ignore if none selected
+
+                chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                    if (tabs[0]) {
+                        chrome.tabs.sendMessage(tabs[0].id, {
+                            type: 'GLOBAL_TRIGGER_SEND',
+                            target: checkedFrames,
+                            text: text
+                        }, (response) => {
+                            if (chrome.runtime.lastError) {
+                                console.error('Error sending message:', chrome.runtime.lastError);
+                            }
+                        });
+                    }
+                });
+
+                globalInput.value = ''; // clear after send
+            };
+
+            globalSendBtn.onclick = sendGlobalMessage;
+
+            globalInput.onkeydown = (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendGlobalMessage();
+                }
+            };
+        }
+
+        // Setup Visibility Controls
+        const hideUiBtn = document.getElementById(`${prefix}-hide-ui-btn`);
+        const showUiBtn = document.getElementById(`${prefix}-show-ui-btn`);
+
+        if (hideUiBtn && showUiBtn) {
+            const sendToggleMessage = (hide) => {
+                chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                    if (tabs[0]) {
+                        chrome.tabs.sendMessage(tabs[0].id, {
+                            type: 'GLOBAL_TOGGLE_UI',
+                            hide: hide
+                        }, (response) => {
+                            if (chrome.runtime.lastError) {
+                                console.error('Error sending toggle message:', chrome.runtime.lastError);
+                            }
+                        });
+                    }
+                });
+            };
+
+            hideUiBtn.onclick = () => sendToggleMessage(true);
+            showUiBtn.onclick = () => sendToggleMessage(false);
+        }
     });
 
     // Toggle change handler
@@ -267,6 +336,12 @@ function initServiceSettings(service) {
 
         const currentLayout = `${finalR}x${finalC}`;
 
+        // Update select options when layout changes
+        const targetCheckboxes = document.getElementById(`${prefix}-target-checkboxes`);
+        if (targetCheckboxes) {
+            updateTargetCheckboxes(currentLayout, targetCheckboxes);
+        }
+
         // Save layout to storage
         chrome.storage.local.set({ [config.layoutKey]: currentLayout }, () => {
             // Send message to apply layout without refresh
@@ -314,6 +389,67 @@ function updateLayoutButtons(layout, rowsInput, colsInput) {
             rowsInput.value = parts[0];
             colsInput.value = parts[1];
         }
+    }
+}
+
+function updateTargetCheckboxes(layout, containerElement) {
+    if (!layout || !layout.includes('x') || !containerElement) return;
+
+    const [rows, cols] = layout.split('x').map(Number);
+    const count = rows * cols;
+
+    // Remember previously checked states if possible
+    const checkedStates = {};
+    containerElement.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        checkedStates[cb.value] = cb.checked;
+    });
+
+    let html = `<label style="display:flex; align-items:center; gap:2px; cursor:pointer;"><input type="checkbox" id="target-all-checkbox" checked> <span style="font-weight:bold;">All</span></label>`;
+
+    for (let i = 0; i < count; i++) {
+        const isChecked = checkedStates[i] !== undefined ? checkedStates[i] : true;
+        html += `<label style="display:flex; align-items:center; gap:2px; cursor:pointer;"><input type="checkbox" class="target-frame-cb" value="${i}" ${isChecked ? 'checked' : ''}> F${i + 1}</label>`;
+    }
+    containerElement.innerHTML = html;
+
+    const allCb = containerElement.querySelector('#target-all-checkbox');
+    const frameCbs = containerElement.querySelectorAll('.target-frame-cb');
+
+    // Check 'All' if all frames are checked
+    const updateAllCbState = () => {
+        const allChecked = Array.from(frameCbs).every(cb => cb.checked);
+        allCb.checked = allChecked;
+    };
+
+    updateAllCbState();
+
+    allCb.addEventListener('change', (e) => {
+        const isChecked = e.target.checked;
+        frameCbs.forEach(cb => cb.checked = isChecked);
+    });
+
+    frameCbs.forEach(cb => {
+        cb.addEventListener('change', updateAllCbState);
+    });
+}
+
+function updateTargetSelect(layout, selectElement) {
+    if (!layout || !layout.includes('x') || !selectElement) return;
+
+    const [rows, cols] = layout.split('x').map(Number);
+    const count = rows * cols;
+
+    const currentVal = selectElement.value;
+    let html = `<option value="all">All Frames</option>`;
+    for (let i = 0; i < count; i++) {
+        html += `<option value="${i}">Frame ${i + 1}</option>`;
+    }
+    selectElement.innerHTML = html;
+
+    if (Array.from(selectElement.options).some(opt => opt.value === currentVal)) {
+        selectElement.value = currentVal;
+    } else {
+        selectElement.value = 'all';
     }
 }
 
