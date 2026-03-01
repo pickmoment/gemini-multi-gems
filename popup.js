@@ -154,7 +154,7 @@ function initServiceSettings(service) {
     const configPanel = document.getElementById(`${prefix}-config-panel`);
 
     // Load saved settings
-    chrome.storage.local.get([config.storageKey, config.layoutKey, config.enabledKey], (result) => {
+    chrome.storage.local.get([config.storageKey, config.layoutKey, config.enabledKey, `${prefix}_targetSelection`], (result) => {
         let gems = result[config.storageKey] || [];
 
         // Default if empty
@@ -164,6 +164,7 @@ function initServiceSettings(service) {
 
         const savedLayout = result[config.layoutKey] || '1x1';
         const isEnabled = result[config.enabledKey] !== false; // default to true
+        const savedSelection = result[`${prefix}_targetSelection`];
 
         // Set toggle state
         enabledToggle.checked = isEnabled;
@@ -180,7 +181,7 @@ function initServiceSettings(service) {
         const globalSendBtn = document.getElementById(`${prefix}-global-send-btn`);
 
         if (targetCheckboxes && globalInput && globalSendBtn) {
-            updateTargetCheckboxes(savedLayout, targetCheckboxes);
+            updateTargetCheckboxes(savedLayout, targetCheckboxes, savedSelection, prefix);
 
             const sendGlobalMessage = () => {
                 const text = globalInput.value.trim();
@@ -359,7 +360,9 @@ function initServiceSettings(service) {
         // Update select options when layout changes
         const targetCheckboxes = document.getElementById(`${prefix}-target-checkboxes`);
         if (targetCheckboxes) {
-            updateTargetCheckboxes(currentLayout, targetCheckboxes);
+            chrome.storage.local.get([`${prefix}_targetSelection`], (res) => {
+                updateTargetCheckboxes(currentLayout, targetCheckboxes, res[`${prefix}_targetSelection`], prefix);
+            });
         }
 
         // Save layout to storage
@@ -412,7 +415,7 @@ function updateLayoutButtons(layout, rowsInput, colsInput) {
     }
 }
 
-function updateTargetCheckboxes(layout, containerElement) {
+function updateTargetCheckboxes(layout, containerElement, savedSelection = null, prefix = null) {
     if (!layout || !layout.includes('x') || !containerElement) return;
 
     const [rows, cols] = layout.split('x').map(Number);
@@ -420,14 +423,23 @@ function updateTargetCheckboxes(layout, containerElement) {
 
     // Remember previously checked states if possible
     const checkedStates = {};
-    containerElement.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-        checkedStates[cb.value] = cb.checked;
-    });
+    if (savedSelection) {
+        savedSelection.forEach(val => checkedStates[val] = true);
+    } else {
+        containerElement.querySelectorAll('input[type="checkbox"].target-frame-cb').forEach(cb => {
+            checkedStates[cb.value] = cb.checked;
+        });
+    }
 
     let html = `<label style="display:flex; align-items:center; gap:2px; cursor:pointer;"><input type="checkbox" id="target-all-checkbox" checked> <span style="font-weight:bold;">All</span></label>`;
 
     for (let i = 0; i < count; i++) {
-        const isChecked = checkedStates[i] !== undefined ? checkedStates[i] : true;
+        let isChecked = true;
+        if (savedSelection) {
+            isChecked = !!checkedStates[i];
+        } else if (checkedStates[i] !== undefined) {
+            isChecked = checkedStates[i];
+        }
         html += `<label style="display:flex; align-items:center; gap:2px; cursor:pointer;"><input type="checkbox" class="target-frame-cb" value="${i}" ${isChecked ? 'checked' : ''}> F${i + 1}</label>`;
     }
     containerElement.innerHTML = html;
@@ -435,17 +447,30 @@ function updateTargetCheckboxes(layout, containerElement) {
     const allCb = containerElement.querySelector('#target-all-checkbox');
     const frameCbs = containerElement.querySelectorAll('.target-frame-cb');
 
+    // Function to persist checkbox selections
+    const saveTargetSelection = () => {
+        if (!prefix) return;
+        const checkedFrames = Array.from(frameCbs)
+            .filter(cb => cb.checked)
+            .map(cb => parseInt(cb.value, 10));
+        chrome.storage.local.set({ [`${prefix}_targetSelection`]: checkedFrames });
+    };
+
     // Check 'All' if all frames are checked
     const updateAllCbState = () => {
         const allChecked = Array.from(frameCbs).every(cb => cb.checked);
         allCb.checked = allChecked;
+        saveTargetSelection();
     };
 
-    updateAllCbState();
+    // Set initial state without saving
+    const initialAllChecked = Array.from(frameCbs).every(cb => cb.checked);
+    allCb.checked = initialAllChecked;
 
     allCb.addEventListener('change', (e) => {
         const isChecked = e.target.checked;
         frameCbs.forEach(cb => cb.checked = isChecked);
+        saveTargetSelection();
     });
 
     frameCbs.forEach(cb => {
