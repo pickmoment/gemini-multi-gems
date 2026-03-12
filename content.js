@@ -374,6 +374,19 @@ function initController() {
                             let targetUrl = CURRENT_CONFIG.defaultUrl; // Default
                             if (match) {
                                 targetUrl = match.url;
+                            } else if (SERVICE_TYPE === 'chatgpt' && data.activeGptName) {
+                                // For ChatGPT conversations, URL alone often cannot identify the active GPT.
+                                // Fallback to matching the visible GPT name shown in the header menu.
+                                const normalizedActiveName = normalizeNameForMatch(data.activeGptName);
+                                const nameMatch = gems.find(g => {
+                                    const normalizedGemName = normalizeNameForMatch(g.name);
+                                    return normalizedGemName === normalizedActiveName ||
+                                        normalizedGemName.includes(normalizedActiveName) ||
+                                        normalizedActiveName.includes(normalizedGemName);
+                                });
+                                if (nameMatch) {
+                                    targetUrl = nameMatch.url;
+                                }
                             } else {
                                 // Fallback to default if exists
                                 const defaultGem = gems.find(g => g.url === CURRENT_CONFIG.defaultUrl);
@@ -402,6 +415,13 @@ function initController() {
             });
         }
     });
+}
+
+function normalizeNameForMatch(name) {
+    return (name || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
 }
 
 function renderGrid(gems, frameConfig, container) {
@@ -636,16 +656,31 @@ function broadcastMessage(msg) {
 // --- Child Frame Logic ---
 
 function initChildFrame() {
-    // 1. Report URL updates
+    // 1. Report URL / active GPT name updates
     let lastUrl = location.href;
+    let lastActiveGptName = '';
+
+    const postFrameState = () => {
+        const activeGptName = getActiveChatGPTName();
+        window.parent.postMessage({
+            type: 'URL_UPDATE',
+            url: location.href,
+            activeGptName
+        }, '*');
+        return activeGptName;
+    };
+
     setInterval(() => {
-        if (location.href !== lastUrl) {
-            lastUrl = location.href;
-            window.parent.postMessage({ type: 'URL_UPDATE', url: lastUrl }, '*');
+        const currentUrl = location.href;
+        const activeGptName = getActiveChatGPTName();
+
+        if (currentUrl !== lastUrl || activeGptName !== lastActiveGptName) {
+            lastUrl = currentUrl;
+            lastActiveGptName = postFrameState();
         }
     }, 1000);
     // Send initial
-    window.parent.postMessage({ type: 'URL_UPDATE', url: lastUrl }, '*');
+    lastActiveGptName = postFrameState();
 
     // 2. Listen for messages from parent
     window.addEventListener('message', (event) => {
@@ -660,6 +695,62 @@ function initChildFrame() {
             handleToggleUI(data.hide);
         }
     });
+}
+
+function getActiveChatGPTName() {
+    if (SERVICE_TYPE !== 'chatgpt') return '';
+
+    // User-provided XPath fallback (id can be dynamic depending on session)
+    const xpathElement = getElementByXpath('//*[@id="radix-_r_cp_"]') || getElementByXpath('//*[@id="radix-_r_ch_"]');
+    if (xpathElement) {
+        const fromXpath = extractPrimaryText(xpathElement);
+        if (fromXpath) return fromXpath;
+    }
+
+    // Robust fallback selectors for ChatGPT header GPT switcher
+    // Prefer candidates that include the "Auto" indicator shown in the same header block.
+    const candidates = document.querySelectorAll('[id^="radix-"][aria-haspopup="menu"]');
+    for (const candidate of candidates) {
+        const candidateText = (candidate.textContent || '').replace(/\s+/g, ' ').trim();
+        const hasAutoBadge = /\bauto\b/i.test(candidateText);
+        if (!hasAutoBadge) continue;
+
+        const label = extractPrimaryText(candidate);
+        if (label && label !== 'ChatGPT') {
+            return label;
+        }
+    }
+
+    // Final fallback: if Auto badge is not present due UI variation, use generic radix menu candidates.
+    for (const candidate of candidates) {
+        const label = extractPrimaryText(candidate);
+        if (label && label !== 'ChatGPT') {
+            return label;
+        }
+    }
+
+    return '';
+}
+
+function extractPrimaryText(element) {
+    if (!element) return '';
+
+    // Prefer the direct text node (before "Auto" and icon nodes)
+    for (const node of element.childNodes) {
+        if (node.nodeType === Node.TEXT_NODE) {
+            const text = node.textContent.trim();
+            if (text) return text;
+        }
+    }
+
+    // Fallback: derive from full text content and remove common suffix
+    const rawText = (element.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!rawText) return '';
+
+    return rawText
+        .replace(/\bAuto\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
 }
 
 function handleToggleUI(shouldHide) {
@@ -885,4 +976,3 @@ function injectGeminiInputToggle() {
 
     observer.observe(document.body, { childList: true, subtree: true });
 }
-
