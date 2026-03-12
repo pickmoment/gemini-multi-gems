@@ -158,6 +158,11 @@
         style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; font-size: 13px;">
         <!-- Checkboxes injected here -->
       </div>
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+        <label for="gemini-send-interval-ms" style="font-size: 12px; color: #bbb; white-space: nowrap;">Send interval (ms)</label>
+        <input id="gemini-send-interval-ms" type="number" min="50" max="5000" step="10" value="100"
+          style="width: 90px; padding: 5px; border-radius: 4px; border: 1px solid #444; background: #131314; color: white; font-size: 12px;">
+      </div>
       <textarea id="gemini-global-input" placeholder="Type message... (Enter to send)" rows="2"
         style="width: 100%; box-sizing: border-box; padding: 6px; background: #131314; color: white; border: 1px solid #444; border-radius: 4px; resize: none; margin-bottom: 8px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"></textarea>
       <button id="gemini-global-send-btn"

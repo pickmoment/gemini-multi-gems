@@ -34,6 +34,10 @@ const SERVICE_CONFIG = {
 };
 
 const CURRENT_CONFIG = SERVICE_CONFIG[SERVICE_TYPE] || SERVICE_CONFIG.gemini;
+const GEMINI_FRAME_SEND_INTERVAL_DEFAULT_MS = 100;
+const GEMINI_FRAME_SEND_INTERVAL_MIN_MS = 50;
+const GEMINI_FRAME_SEND_INTERVAL_MAX_MS = 5000;
+let geminiSendQueue = Promise.resolve();
 
 if (isTopLevel) {
     console.log(`[${CURRENT_CONFIG.serviceName}] Checking if multi-view is enabled...`);
@@ -135,20 +139,20 @@ function initController() {
             sendResponse({ success: true });
         } else if (message.type === 'GLOBAL_TRIGGER_SEND') {
             const payload = { type: 'TRIGGER_SEND', text: message.text };
-            if (Array.isArray(message.target)) {
-                message.target.forEach(targetIndex => {
-                    const targetIframe = document.getElementById(`gem-frame-${targetIndex}`);
-                    if (targetIframe && targetIframe.contentWindow) {
-                        targetIframe.contentWindow.postMessage(payload, '*');
-                    }
-                });
-            } else if (message.target === 'all') {
-                broadcastMessage(payload);
+
+            if (SERVICE_TYPE === 'gemini') {
+                const targetIndices = resolveTargetFrameIndices(message.target);
+                const sendIntervalMs = sanitizeGeminiSendInterval(message.sendIntervalMs);
+                scheduleGeminiSequentialSend(targetIndices, payload, sendIntervalMs);
             } else {
-                const targetIndex = parseInt(message.target, 10);
-                const targetIframe = document.getElementById(`gem-frame-${targetIndex}`);
-                if (targetIframe && targetIframe.contentWindow) {
-                    targetIframe.contentWindow.postMessage(payload, '*');
+                if (Array.isArray(message.target)) {
+                    message.target.forEach(targetIndex => {
+                        postTriggerSendToFrame(targetIndex, payload);
+                    });
+                } else if (message.target === 'all') {
+                    broadcastMessage(payload);
+                } else {
+                    postTriggerSendToFrame(message.target, payload);
                 }
             }
             sendResponse({ success: true });
@@ -642,6 +646,64 @@ function ensureFrameCount(container, count) {
             console.log('[MGem] Frames created. Total:', container.querySelectorAll('.mgem-frame-wrapper').length);
         });
     }
+}
+
+function postTriggerSendToFrame(targetIndex, payload) {
+    const parsedIndex = parseInt(targetIndex, 10);
+    if (Number.isNaN(parsedIndex)) return;
+
+    const targetIframe = document.getElementById(`gem-frame-${parsedIndex}`);
+    if (targetIframe && targetIframe.contentWindow) {
+        targetIframe.contentWindow.postMessage(payload, '*');
+    }
+}
+
+function getAllFrameIndices() {
+    const frameNodes = document.querySelectorAll('iframe[id^="gem-frame-"]');
+    return Array.from(frameNodes)
+        .map(frame => parseInt(frame.id.replace('gem-frame-', ''), 10))
+        .filter(index => !Number.isNaN(index));
+}
+
+function resolveTargetFrameIndices(target) {
+    if (Array.isArray(target)) {
+        return target
+            .map(index => parseInt(index, 10))
+            .filter(index => !Number.isNaN(index));
+    }
+
+    if (target === 'all') {
+        return getAllFrameIndices();
+    }
+
+    const single = parseInt(target, 10);
+    return Number.isNaN(single) ? [] : [single];
+}
+
+function sanitizeGeminiSendInterval(value) {
+    const parsed = parseInt(value, 10);
+    if (Number.isNaN(parsed)) return GEMINI_FRAME_SEND_INTERVAL_DEFAULT_MS;
+    return Math.max(GEMINI_FRAME_SEND_INTERVAL_MIN_MS, Math.min(GEMINI_FRAME_SEND_INTERVAL_MAX_MS, parsed));
+}
+
+function scheduleGeminiSequentialSend(targetIndices, payload, sendIntervalMs = GEMINI_FRAME_SEND_INTERVAL_DEFAULT_MS) {
+    if (!Array.isArray(targetIndices) || targetIndices.length === 0) return;
+
+    const uniqueIndices = [...new Set(targetIndices)];
+
+    geminiSendQueue = geminiSendQueue
+        .then(async () => {
+            for (let i = 0; i < uniqueIndices.length; i++) {
+                postTriggerSendToFrame(uniqueIndices[i], payload);
+
+                if (i < uniqueIndices.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, sendIntervalMs));
+                }
+            }
+        })
+        .catch((error) => {
+            console.error('[Gemini] Sequential send queue error:', error);
+        });
 }
 
 function broadcastMessage(msg) {
