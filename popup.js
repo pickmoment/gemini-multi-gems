@@ -23,10 +23,13 @@ const SERVICE_CONFIG = {
 };
 
 let currentService = null;
-const GEMINI_SEND_INTERVAL_KEY = 'geminiSendIntervalMs';
-const GEMINI_SEND_INTERVAL_DEFAULT_MS = 100;
-const GEMINI_SEND_INTERVAL_MIN_MS = 50;
-const GEMINI_SEND_INTERVAL_MAX_MS = 5000;
+const SERVICE_SEND_INTERVAL_KEY = {
+    gemini: 'geminiSendIntervalMs',
+    chatgpt: 'chatgptSendIntervalMs'
+};
+const SEND_INTERVAL_DEFAULT_MS = 100;
+const SEND_INTERVAL_MIN_MS = 50;
+const SEND_INTERVAL_MAX_MS = 5000;
 
 document.addEventListener('DOMContentLoaded', () => {
     // Detect current service from active tab
@@ -157,11 +160,12 @@ function initServiceSettings(service) {
     const enabledToggle = document.getElementById(`${prefix}-enabled-toggle`);
     const configPanel = document.getElementById(`${prefix}-config-panel`);
     const sendIntervalInput = document.getElementById(`${prefix}-send-interval-ms`);
+    const sendIntervalStorageKey = SERVICE_SEND_INTERVAL_KEY[service];
 
     // Load saved settings
     const storageKeys = [config.storageKey, config.layoutKey, config.enabledKey, `${prefix}_targetSelection`];
-    if (service === 'gemini') {
-        storageKeys.push(GEMINI_SEND_INTERVAL_KEY);
+    if (sendIntervalStorageKey) {
+        storageKeys.push(sendIntervalStorageKey);
     }
 
     chrome.storage.local.get(storageKeys, (result) => {
@@ -175,9 +179,9 @@ function initServiceSettings(service) {
         const savedLayout = result[config.layoutKey] || '1x1';
         const isEnabled = result[config.enabledKey] !== false; // default to true
         const savedSelection = result[`${prefix}_targetSelection`];
-        const savedSendInterval = service === 'gemini'
-            ? sanitizeGeminiSendInterval(result[GEMINI_SEND_INTERVAL_KEY])
-            : GEMINI_SEND_INTERVAL_DEFAULT_MS;
+        const savedSendInterval = sendIntervalStorageKey
+            ? sanitizeSendInterval(result[sendIntervalStorageKey])
+            : SEND_INTERVAL_DEFAULT_MS;
 
         // Set toggle state
         enabledToggle.checked = isEnabled;
@@ -188,13 +192,13 @@ function initServiceSettings(service) {
         gems.forEach(gem => addGemInput(gem.name, gem.url, prefix, container, config));
         updateLayoutButtons(savedLayout, rowsInput, colsInput);
 
-        if (service === 'gemini' && sendIntervalInput) {
+        if (sendIntervalInput && sendIntervalStorageKey) {
             sendIntervalInput.value = savedSendInterval;
 
             const saveSendInterval = () => {
-                const sanitized = sanitizeGeminiSendInterval(sendIntervalInput.value);
+                const sanitized = sanitizeSendInterval(sendIntervalInput.value);
                 sendIntervalInput.value = sanitized;
-                chrome.storage.local.set({ [GEMINI_SEND_INTERVAL_KEY]: sanitized });
+                chrome.storage.local.set({ [sendIntervalStorageKey]: sanitized });
             };
 
             sendIntervalInput.addEventListener('change', saveSendInterval);
@@ -227,8 +231,8 @@ function initServiceSettings(service) {
                             text: text
                         };
 
-                        if (service === 'gemini' && sendIntervalInput) {
-                            requestPayload.sendIntervalMs = sanitizeGeminiSendInterval(sendIntervalInput.value);
+                        if (sendIntervalInput) {
+                            requestPayload.sendIntervalMs = sanitizeSendInterval(sendIntervalInput.value);
                         }
 
                         chrome.tabs.sendMessage(tabs[0].id, requestPayload, (response) => {
@@ -530,10 +534,10 @@ function updateTargetSelect(layout, selectElement) {
     }
 }
 
-function sanitizeGeminiSendInterval(value) {
+function sanitizeSendInterval(value) {
     const parsed = parseInt(value, 10);
-    if (Number.isNaN(parsed)) return GEMINI_SEND_INTERVAL_DEFAULT_MS;
-    return Math.max(GEMINI_SEND_INTERVAL_MIN_MS, Math.min(GEMINI_SEND_INTERVAL_MAX_MS, parsed));
+    if (Number.isNaN(parsed)) return SEND_INTERVAL_DEFAULT_MS;
+    return Math.max(SEND_INTERVAL_MIN_MS, Math.min(SEND_INTERVAL_MAX_MS, parsed));
 }
 
 function addGemInput(nameValue, urlValue, prefix, container, config) {

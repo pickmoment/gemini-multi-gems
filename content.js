@@ -34,10 +34,15 @@ const SERVICE_CONFIG = {
 };
 
 const CURRENT_CONFIG = SERVICE_CONFIG[SERVICE_TYPE] || SERVICE_CONFIG.gemini;
-const GEMINI_FRAME_SEND_INTERVAL_DEFAULT_MS = 100;
-const GEMINI_FRAME_SEND_INTERVAL_MIN_MS = 50;
-const GEMINI_FRAME_SEND_INTERVAL_MAX_MS = 5000;
-let geminiSendQueue = Promise.resolve();
+const FRAME_SEND_INTERVAL_DEFAULT_MS = 100;
+const FRAME_SEND_INTERVAL_MIN_MS = 50;
+const FRAME_SEND_INTERVAL_MAX_MS = 5000;
+const CHATGPT_SEND_BUTTON_RETRY_COUNT = 4;
+const CHATGPT_SEND_BUTTON_RETRY_INTERVAL_MS = 80;
+const sequentialSendQueueByService = {
+    gemini: Promise.resolve(),
+    chatgpt: Promise.resolve()
+};
 
 if (isTopLevel) {
     console.log(`[${CURRENT_CONFIG.serviceName}] Checking if multi-view is enabled...`);
@@ -140,10 +145,10 @@ function initController() {
         } else if (message.type === 'GLOBAL_TRIGGER_SEND') {
             const payload = { type: 'TRIGGER_SEND', text: message.text };
 
-            if (SERVICE_TYPE === 'gemini') {
+            if (SERVICE_TYPE === 'gemini' || SERVICE_TYPE === 'chatgpt') {
                 const targetIndices = resolveTargetFrameIndices(message.target);
-                const sendIntervalMs = sanitizeGeminiSendInterval(message.sendIntervalMs);
-                scheduleGeminiSequentialSend(targetIndices, payload, sendIntervalMs);
+                const sendIntervalMs = sanitizeFrameSendInterval(message.sendIntervalMs);
+                scheduleSequentialSend(SERVICE_TYPE, targetIndices, payload, sendIntervalMs);
             } else {
                 if (Array.isArray(message.target)) {
                     message.target.forEach(targetIndex => {
@@ -680,18 +685,19 @@ function resolveTargetFrameIndices(target) {
     return Number.isNaN(single) ? [] : [single];
 }
 
-function sanitizeGeminiSendInterval(value) {
+function sanitizeFrameSendInterval(value) {
     const parsed = parseInt(value, 10);
-    if (Number.isNaN(parsed)) return GEMINI_FRAME_SEND_INTERVAL_DEFAULT_MS;
-    return Math.max(GEMINI_FRAME_SEND_INTERVAL_MIN_MS, Math.min(GEMINI_FRAME_SEND_INTERVAL_MAX_MS, parsed));
+    if (Number.isNaN(parsed)) return FRAME_SEND_INTERVAL_DEFAULT_MS;
+    return Math.max(FRAME_SEND_INTERVAL_MIN_MS, Math.min(FRAME_SEND_INTERVAL_MAX_MS, parsed));
 }
 
-function scheduleGeminiSequentialSend(targetIndices, payload, sendIntervalMs = GEMINI_FRAME_SEND_INTERVAL_DEFAULT_MS) {
+function scheduleSequentialSend(serviceType, targetIndices, payload, sendIntervalMs = FRAME_SEND_INTERVAL_DEFAULT_MS) {
     if (!Array.isArray(targetIndices) || targetIndices.length === 0) return;
+    if (!sequentialSendQueueByService[serviceType]) return;
 
     const uniqueIndices = [...new Set(targetIndices)];
 
-    geminiSendQueue = geminiSendQueue
+    sequentialSendQueueByService[serviceType] = sequentialSendQueueByService[serviceType]
         .then(async () => {
             for (let i = 0; i < uniqueIndices.length; i++) {
                 postTriggerSendToFrame(uniqueIndices[i], payload);
@@ -702,7 +708,7 @@ function scheduleGeminiSequentialSend(targetIndices, payload, sendIntervalMs = G
             }
         })
         .catch((error) => {
-            console.error('[Gemini] Sequential send queue error:', error);
+            console.error(`[${serviceType}] Sequential send queue error:`, error);
         });
 }
 
@@ -867,7 +873,9 @@ function handleInputUpdate(text) {
         }
     } else if (SERVICE_TYPE === 'chatgpt') {
         // ChatGPT-specific selectors
-        targetElement = document.querySelector('#prompt-textarea') ||
+        targetElement = document.querySelector('form[data-type="unified-composer"] #prompt-textarea[contenteditable="true"]') ||
+            document.querySelector('#prompt-textarea[contenteditable="true"]') ||
+            document.querySelector('#prompt-textarea') ||
             document.querySelector('textarea[data-id="root"]') ||
             document.querySelector('div[contenteditable="true"]');
     }
@@ -923,42 +931,65 @@ function handleTriggerSend(text) {
         handleInputUpdate(text);
     }
 
-    let sendButtonSelectors = [];
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-    if (SERVICE_TYPE === 'gemini') {
-        sendButtonSelectors = [
-            'button[aria-label="Send"]',
-            'button[aria-label="Submit"]',
-            'button[aria-label*="전송"]',
-            'button.send-button',
-            'div[role="button"][aria-label="Send"]'
-        ];
-    } else if (SERVICE_TYPE === 'chatgpt') {
-        sendButtonSelectors = [
-            'button[data-testid="send-button"]',
-            'button[aria-label="Send message"]',
-            'button[aria-label="Send prompt"]',
-            'button[type="submit"]',
-            'button svg.icon-send'
-        ];
-    }
+    const getChatGPTComposerSendButton = () => {
+        const composerForm = document.querySelector('form[data-type="unified-composer"]');
+        if (!composerForm) return null;
+        return composerForm.querySelector(
+            '#composer-submit-button, button[data-testid="send-button"], button[aria-label*="프롬프트 보내기"], button[aria-label*="보내기"], button[aria-label*="Send"]'
+        );
+    };
 
-    let sendButton = null;
-    for (const selector of sendButtonSelectors) {
-        sendButton = document.querySelector(selector);
-        if (sendButton) break;
-    }
+    const getSendButton = () => {
+        let candidate = null;
 
-    if (sendButton) {
-        setTimeout(() => {
-            sendButton.click();
-            if (wasHidden) {
-                setTimeout(() => handleToggleUI(true), 500); // Re-hide after small delay
+        if (SERVICE_TYPE === 'chatgpt') {
+            candidate = getChatGPTComposerSendButton();
+        }
+
+        if (!candidate) {
+            const sendButtonSelectors = SERVICE_TYPE === 'gemini'
+                ? [
+                    'button[aria-label="Send"]',
+                    'button[aria-label="Submit"]',
+                    'button[aria-label*="전송"]',
+                    'button.send-button',
+                    'div[role="button"][aria-label="Send"]'
+                ]
+                : [
+                    'form[data-type="unified-composer"] #composer-submit-button',
+                    'form[data-type="unified-composer"] button[data-testid="send-button"]',
+                    'button#composer-submit-button',
+                    'button[data-testid="send-button"]',
+                    'button[aria-label="Send message"]',
+                    'button[aria-label="Send prompt"]',
+                    'button[aria-label*="프롬프트 보내기"]',
+                    'button[type="submit"]'
+                ];
+
+            for (const selector of sendButtonSelectors) {
+                candidate = document.querySelector(selector);
+                if (candidate) break;
             }
-        }, 100);
-    } else {
+        }
+
+        if (candidate && candidate.tagName !== 'BUTTON') {
+            candidate = candidate.closest('button');
+        }
+
+        return candidate;
+    };
+
+    const isButtonClickable = (button) => {
+        return !!button && !button.disabled && button.getAttribute('aria-disabled') !== 'true';
+    };
+
+    const fallbackWithEnter = () => {
         console.warn(`[${CURRENT_CONFIG.serviceName}-Child] Send button not found. Attempting Enter key.`);
-        const editor = document.querySelector('div[contenteditable="true"]') ||
+        const editor = document.querySelector('form[data-type="unified-composer"] #prompt-textarea[contenteditable="true"]') ||
+            document.querySelector('#prompt-textarea[contenteditable="true"]') ||
+            document.querySelector('div[contenteditable="true"]') ||
             document.querySelector('#prompt-textarea') ||
             document.querySelector('textarea[data-id="root"]');
         if (editor) {
@@ -983,11 +1014,40 @@ function handleTriggerSend(text) {
             });
             editor.dispatchEvent(enterPress);
         }
+    };
+
+    (async () => {
+        const maxAttempts = SERVICE_TYPE === 'chatgpt' ? CHATGPT_SEND_BUTTON_RETRY_COUNT : 1;
+        const retryDelay = CHATGPT_SEND_BUTTON_RETRY_INTERVAL_MS;
+        let clicked = false;
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const sendButton = getSendButton();
+            if (isButtonClickable(sendButton)) {
+                setTimeout(() => sendButton.click(), 100);
+                clicked = true;
+                break;
+            }
+
+            if (attempt < maxAttempts - 1) {
+                await sleep(retryDelay);
+            }
+        }
+
+        if (!clicked) {
+            fallbackWithEnter();
+        }
 
         if (wasHidden) {
             setTimeout(() => handleToggleUI(true), 500); // Re-hide after small delay
         }
-    }
+    })().catch((error) => {
+        console.error(`[${CURRENT_CONFIG.serviceName}-Child] Trigger send failed:`, error);
+        fallbackWithEnter();
+        if (wasHidden) {
+            setTimeout(() => handleToggleUI(true), 500);
+        }
+    });
 }
 
 function injectGeminiInputToggle() {
