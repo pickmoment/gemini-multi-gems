@@ -19,6 +19,10 @@ const SERVICE_CONFIG = {
 // Mixed view storage keys
 const MIXED_VIEW_LAYOUT_KEY = 'mixedViewLayout';
 const MIXED_VIEW_FRAME_CONFIG_KEY = 'mixedViewFrameConfig';
+const FRAME_SEND_INTERVAL_DEFAULT_MS = 100;
+const FRAME_SEND_INTERVAL_MIN_MS = 50;
+const FRAME_SEND_INTERVAL_MAX_MS = 5000;
+let mixedViewSendQueue = Promise.resolve();
 
 // Initialize the mixed view
 function initMixedView() {
@@ -272,11 +276,75 @@ function adjustFrameCount(newLayout, allItems) {
     applyLayout(newLayout);
 }
 
+function postTriggerSendToFrame(targetIndex, payload) {
+    const parsedIndex = parseInt(targetIndex, 10);
+    if (Number.isNaN(parsedIndex)) return;
+
+    const targetIframe = document.getElementById(`gem-frame-${parsedIndex}`);
+    if (targetIframe && targetIframe.contentWindow) {
+        targetIframe.contentWindow.postMessage(payload, '*');
+    }
+}
+
+function getAllFrameIndices() {
+    const frameNodes = document.querySelectorAll('iframe[id^="gem-frame-"]');
+    return Array.from(frameNodes)
+        .map(frame => parseInt(frame.id.replace('gem-frame-', ''), 10))
+        .filter(index => !Number.isNaN(index));
+}
+
+function resolveTargetFrameIndices(target) {
+    if (Array.isArray(target)) {
+        return target
+            .map(index => parseInt(index, 10))
+            .filter(index => !Number.isNaN(index));
+    }
+
+    if (target === 'all') {
+        return getAllFrameIndices();
+    }
+
+    const single = parseInt(target, 10);
+    return Number.isNaN(single) ? [] : [single];
+}
+
+function sanitizeSendInterval(value) {
+    const parsed = parseInt(value, 10);
+    if (Number.isNaN(parsed)) return FRAME_SEND_INTERVAL_DEFAULT_MS;
+    return Math.max(FRAME_SEND_INTERVAL_MIN_MS, Math.min(FRAME_SEND_INTERVAL_MAX_MS, parsed));
+}
+
+function scheduleSequentialSend(targetIndices, payload, sendIntervalMs = FRAME_SEND_INTERVAL_DEFAULT_MS) {
+    if (!Array.isArray(targetIndices) || targetIndices.length === 0) return;
+
+    const uniqueIndices = [...new Set(targetIndices)];
+
+    mixedViewSendQueue = mixedViewSendQueue
+        .then(async () => {
+            for (let i = 0; i < uniqueIndices.length; i++) {
+                postTriggerSendToFrame(uniqueIndices[i], payload);
+
+                if (i < uniqueIndices.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, sendIntervalMs));
+                }
+            }
+        })
+        .catch((error) => {
+            console.error('[Mixed View] Sequential send queue error:', error);
+        });
+}
+
 // Listen for messages
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'UPDATE_MIXED_VIEW') {
         console.log('[Mixed View] Reloading...');
         window.location.reload();
+    } else if (message.type === 'GLOBAL_TRIGGER_SEND') {
+        const payload = { type: 'TRIGGER_SEND', text: message.text };
+        const targetIndices = resolveTargetFrameIndices(message.target);
+        const sendIntervalMs = sanitizeSendInterval(message.sendIntervalMs);
+        scheduleSequentialSend(targetIndices, payload, sendIntervalMs);
+        sendResponse({ success: true });
     } else if (message.type === 'UPDATE_LAYOUT') {
         console.log('[Mixed View] Updating layout to:', message.layout);
 

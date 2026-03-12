@@ -27,6 +27,9 @@ const SERVICE_SEND_INTERVAL_KEY = {
     gemini: 'geminiSendIntervalMs',
     chatgpt: 'chatgptSendIntervalMs'
 };
+const MIXED_VIEW_LAYOUT_KEY = 'mixedViewLayout';
+const MIXED_TARGET_SELECTION_KEY = 'mixed_targetSelection';
+const MIXED_SEND_INTERVAL_KEY = 'mixedSendIntervalMs';
 const SEND_INTERVAL_DEFAULT_MS = 100;
 const SEND_INTERVAL_MIN_MS = 50;
 const SEND_INTERVAL_MAX_MS = 5000;
@@ -83,22 +86,81 @@ function showMixedViewSettings() {
     document.getElementById('chatgpt-settings').style.display = 'none';
     document.getElementById('mixed-view-settings').style.display = 'block';
 
-    // Initialize Mixed View settings
-    const MIXED_VIEW_LAYOUT_KEY = 'mixedViewLayout';
-    const MIXED_VIEW_FRAME_CONFIG_KEY = 'mixedViewFrameConfig';
-
     const rowsInput = document.getElementById('mixed-custom-rows');
     const colsInput = document.getElementById('mixed-custom-cols');
     const applyLayoutBtn = document.getElementById('mixed-apply-layout-btn');
     const gotoGeminiBtn = document.getElementById('mixed-goto-gemini-btn');
     const gotoChatGPTBtn = document.getElementById('mixed-goto-chatgpt-btn');
+    const targetCheckboxes = document.getElementById('mixed-target-checkboxes');
+    const globalInput = document.getElementById('mixed-global-input');
+    const globalSendBtn = document.getElementById('mixed-global-send-btn');
+    const sendIntervalInput = document.getElementById('mixed-send-interval-ms');
 
-    // Load saved layout
-    chrome.storage.local.get([MIXED_VIEW_LAYOUT_KEY], (result) => {
+    const saveSendInterval = () => {
+        if (!sendIntervalInput) return;
+        const sanitized = sanitizeSendInterval(sendIntervalInput.value);
+        sendIntervalInput.value = sanitized;
+        chrome.storage.local.set({ [MIXED_SEND_INTERVAL_KEY]: sanitized });
+    };
+
+    const sendMixedGlobalMessage = () => {
+        if (!targetCheckboxes || !globalInput) return;
+
+        const text = globalInput.value.trim();
+        if (!text) return;
+
+        const checkedFrames = Array.from(targetCheckboxes.querySelectorAll('.target-frame-cb'))
+            .filter(cb => cb.checked)
+            .map(cb => parseInt(cb.value, 10));
+
+        if (checkedFrames.length === 0) return;
+
+        const sendIntervalMs = sendIntervalInput
+            ? sanitizeSendInterval(sendIntervalInput.value)
+            : SEND_INTERVAL_DEFAULT_MS;
+
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0]) {
+                chrome.tabs.sendMessage(tabs[0].id, {
+                    type: 'GLOBAL_TRIGGER_SEND',
+                    target: checkedFrames,
+                    text,
+                    sendIntervalMs
+                });
+            }
+        });
+
+        globalInput.value = '';
+    };
+
+    chrome.storage.local.get([MIXED_VIEW_LAYOUT_KEY, MIXED_TARGET_SELECTION_KEY, MIXED_SEND_INTERVAL_KEY], (result) => {
         const savedLayout = result[MIXED_VIEW_LAYOUT_KEY] || '2x2';
         const [rows, cols] = savedLayout.split('x').map(Number);
         rowsInput.value = rows;
         colsInput.value = cols;
+
+        if (targetCheckboxes) {
+            updateTargetCheckboxes(savedLayout, targetCheckboxes, result[MIXED_TARGET_SELECTION_KEY], 'mixed');
+        }
+
+        if (sendIntervalInput) {
+            sendIntervalInput.value = sanitizeSendInterval(result[MIXED_SEND_INTERVAL_KEY]);
+            sendIntervalInput.addEventListener('change', saveSendInterval);
+            sendIntervalInput.addEventListener('blur', saveSendInterval);
+        }
+
+        if (globalSendBtn) {
+            globalSendBtn.onclick = sendMixedGlobalMessage;
+        }
+
+        if (globalInput) {
+            globalInput.onkeydown = (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMixedGlobalMessage();
+                }
+            };
+        }
     });
 
     // Apply layout button handler
@@ -112,6 +174,10 @@ function showMixedViewSettings() {
         colsInput.value = finalC;
 
         const currentLayout = `${finalR}x${finalC}`;
+
+        if (targetCheckboxes) {
+            updateTargetCheckboxes(currentLayout, targetCheckboxes, null, 'mixed');
+        }
 
         chrome.storage.local.set({ [MIXED_VIEW_LAYOUT_KEY]: currentLayout }, () => {
             // Send message to update Mixed View without refresh
