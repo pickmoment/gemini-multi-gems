@@ -19,10 +19,112 @@ const SERVICE_CONFIG = {
 // Mixed view storage keys
 const MIXED_VIEW_LAYOUT_KEY = 'mixedViewLayout';
 const MIXED_VIEW_FRAME_CONFIG_KEY = 'mixedViewFrameConfig';
+const FRAME_RESTORE_INTERVAL_MS = 250;
 const FRAME_SEND_INTERVAL_DEFAULT_MS = 100;
 const FRAME_SEND_INTERVAL_MIN_MS = 50;
 const FRAME_SEND_INTERVAL_MAX_MS = 5000;
 let mixedViewSendQueue = Promise.resolve();
+let mixedViewRestoreQueue = Promise.resolve();
+
+function normalizeStoredUrl(value) {
+    if (typeof value !== 'string') return '';
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : '';
+}
+
+function persistFrameUrl(index, url) {
+    const normalizedUrl = normalizeStoredUrl(url);
+    if (!normalizedUrl) return;
+
+    if (!window.mixedViewData) {
+        window.mixedViewData = { allItems: [], frameConfig: {} };
+    }
+
+    const frameConfig = window.mixedViewData.frameConfig || {};
+    if (frameConfig[index] === normalizedUrl) return;
+
+    frameConfig[index] = normalizedUrl;
+    window.mixedViewData.frameConfig = frameConfig;
+    chrome.storage.local.set({ [MIXED_VIEW_FRAME_CONFIG_KEY]: frameConfig });
+}
+
+function scheduleFrameRestore(tasks) {
+    if (!Array.isArray(tasks) || tasks.length === 0) return;
+
+    mixedViewRestoreQueue = mixedViewRestoreQueue
+        .then(async () => {
+            for (let i = 0; i < tasks.length; i++) {
+                const task = tasks[i];
+                if (!task || !task.wrapper || !task.url) continue;
+
+                const iframe = task.wrapper.querySelector('iframe');
+                if (!iframe) continue;
+
+                iframe.src = task.url;
+
+                const urlDisplay = task.wrapper.querySelector('.mgem-url-display');
+                if (urlDisplay) {
+                    urlDisplay.value = task.url;
+                }
+
+                if (i < tasks.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, FRAME_RESTORE_INTERVAL_MS));
+                }
+            }
+        })
+        .catch((error) => {
+            console.error('[Mixed View] Frame restore queue error:', error);
+        });
+}
+
+function findBestMatchingItemUrl(currentUrl, allItems) {
+    const normalizedUrl = normalizeStoredUrl(currentUrl);
+    if (!normalizedUrl || !Array.isArray(allItems)) return '';
+
+    const sortedItems = [...allItems].sort((a, b) => (b.url || '').length - (a.url || '').length);
+    const matchedItem = sortedItems.find(item => normalizedUrl.includes(item.url));
+    return matchedItem ? matchedItem.url : '';
+}
+
+function bindMixedViewFrameStateSync() {
+    window.addEventListener('message', (event) => {
+        const data = event.data;
+        if (!data || data.type !== 'URL_UPDATE' || !data.url) return;
+
+        const iframes = document.querySelectorAll('iframe[id^="gem-frame-"]');
+        iframes.forEach((iframe) => {
+            if (iframe.contentWindow !== event.source) return;
+
+            const index = parseInt(iframe.id.replace('gem-frame-', ''), 10);
+            if (Number.isNaN(index)) return;
+
+            const wrapper = iframe.closest('.mgem-frame-wrapper');
+            if (!wrapper) return;
+
+            const normalizedUrl = normalizeStoredUrl(data.url);
+            if (!normalizedUrl) return;
+
+            const urlDisplay = wrapper.querySelector('.mgem-url-display');
+            if (urlDisplay) {
+                urlDisplay.value = normalizedUrl;
+            }
+
+            const customSelectNode = wrapper.querySelector('.mgem-custom-select');
+            const customSelect = customSelectNode && customSelectNode._customSelectObject
+                ? customSelectNode._customSelectObject
+                : null;
+            const allItems = window.mixedViewData && Array.isArray(window.mixedViewData.allItems)
+                ? window.mixedViewData.allItems
+                : [];
+            const matchedItemUrl = findBestMatchingItemUrl(normalizedUrl, allItems);
+            if (customSelect && matchedItemUrl && customSelect.getValue() !== matchedItemUrl) {
+                customSelect.setValue(matchedItemUrl);
+            }
+
+            persistFrameUrl(index, normalizedUrl);
+        });
+    });
+}
 
 // Initialize the mixed view
 function initMixedView() {
@@ -55,8 +157,7 @@ function initMixedView() {
             ...chatgptGPTs.map(g => ({ ...g, service: 'chatgpt' }))
         ];
 
-        // Don't load frameConfig - always start with empty frames
-        const frameConfig = {};
+        const frameConfig = result[MIXED_VIEW_FRAME_CONFIG_KEY] || {};
         const initialLayout = result[MIXED_VIEW_LAYOUT_KEY] || '2x2';
 
         console.log('[Mixed View] Loaded config:', { allItems, initialLayout });
@@ -71,6 +172,8 @@ function initMixedView() {
 
         // Store allItems for later use
         window.mixedViewData = { allItems, frameConfig };
+
+        bindMixedViewFrameStateSync();
     });
 }
 
@@ -80,11 +183,21 @@ function renderGrid(allItems, frameConfig, grid, layout = '2x2') {
     const totalFrames = rows * cols;
 
     grid.innerHTML = '';
+    const restoreTasks = [];
 
     for (let i = 0; i < totalFrames; i++) {
-        const wrapper = createFrameWrapper(i, allItems, frameConfig);
-        grid.appendChild(wrapper);
+        const frameData = createFrameWrapper(i, allItems, frameConfig);
+        grid.appendChild(frameData.wrapper);
+
+        if (frameData.restoreUrl) {
+            restoreTasks.push({
+                wrapper: frameData.wrapper,
+                url: frameData.restoreUrl
+            });
+        }
     }
+
+    scheduleFrameRestore(restoreTasks);
 }
 
 // Create a single frame wrapper
@@ -109,7 +222,7 @@ function createFrameWrapper(index, allItems, frameConfig) {
     const customSelect = new CustomSearchSelect({
         items: items,
         placeholder: '-- Select AI --',
-        value: frameConfig[index] || '',
+        value: '',
         isGrouped: true,
         onChange: (e) => {
             const newUrl = e.target.value;
@@ -120,6 +233,7 @@ function createFrameWrapper(index, allItems, frameConfig) {
                 if (urlDisplay) {
                     urlDisplay.value = newUrl;
                 }
+                persistFrameUrl(index, newUrl);
             }
         }
     });
@@ -127,15 +241,12 @@ function createFrameWrapper(index, allItems, frameConfig) {
     const selectElement = customSelect.getElement();
     selectElement._customSelectObject = customSelect;
 
-    // Set saved value (only load if explicitly configured)
-    let shouldAutoLoad = false;
-    let autoLoadUrl = '';
-
-    if (frameConfig[index]) {
-        shouldAutoLoad = true;
-        autoLoadUrl = frameConfig[index];
+    // Restore last visited URL for each frame (loaded sequentially by queue)
+    const restoreUrl = normalizeStoredUrl(frameConfig[index]);
+    const matchedItemUrl = findBestMatchingItemUrl(restoreUrl, allItems);
+    if (matchedItemUrl) {
+        customSelect.setValue(matchedItemUrl);
     }
-    // Don't auto-load any frame by default
 
     // Refresh button
     const refreshBtn = document.createElement('button');
@@ -143,8 +254,17 @@ function createFrameWrapper(index, allItems, frameConfig) {
     refreshBtn.title = 'Reload';
     refreshBtn.onclick = () => {
         const iframe = wrapper.querySelector('iframe');
-        if (iframe) {
-            iframe.src = iframe.src;
+        if (!iframe) return;
+
+        const selectedUrl = normalizeStoredUrl(customSelect.getValue());
+        if (!selectedUrl) return;
+
+        iframe.src = selectedUrl;
+        persistFrameUrl(index, selectedUrl);
+
+        const urlDisplay = wrapper.querySelector('.mgem-url-display');
+        if (urlDisplay) {
+            urlDisplay.value = selectedUrl;
         }
     };
 
@@ -153,7 +273,7 @@ function createFrameWrapper(index, allItems, frameConfig) {
     urlDisplay.type = 'text';
     urlDisplay.className = 'mgem-url-display';
     urlDisplay.readOnly = true;
-    urlDisplay.value = 'No AI selected';
+    urlDisplay.value = restoreUrl || 'No AI selected';
 
     header.appendChild(selectElement);
     header.appendChild(refreshBtn);
@@ -165,29 +285,32 @@ function createFrameWrapper(index, allItems, frameConfig) {
     iframe.allow = 'clipboard-read; clipboard-write; microphone; camera';
     // Remove sandbox restrictions to allow ChatGPT to work properly
     // sandbox attribute restricts features - removing it allows full functionality
-
-    if (shouldAutoLoad && autoLoadUrl) {
-        iframe.src = autoLoadUrl;
-        urlDisplay.value = autoLoadUrl;
-    }
+    iframe.src = 'about:blank';
 
     // Handled by customSelect onChange callback
 
     // URL update listener
     iframe.addEventListener('load', () => {
+        let currentUrl = '';
         try {
-            const currentUrl = iframe.contentWindow.location.href;
+            currentUrl = iframe.contentWindow.location.href;
             urlDisplay.value = currentUrl;
         } catch (e) {
             // Cross-origin restriction
-            urlDisplay.value = iframe.src;
+            currentUrl = iframe.src;
+            urlDisplay.value = currentUrl;
+        }
+
+        const normalizedCurrentUrl = normalizeStoredUrl(currentUrl);
+        if (normalizedCurrentUrl && normalizedCurrentUrl !== 'about:blank') {
+            persistFrameUrl(index, normalizedCurrentUrl);
         }
     });
 
     wrapper.appendChild(header);
     wrapper.appendChild(iframe);
 
-    return wrapper;
+    return { wrapper, restoreUrl };
 }
 
 // Apply layout
@@ -255,9 +378,20 @@ function adjustFrameCount(newLayout, allItems) {
     if (newTotalFrames > currentCount) {
         // Add new frames
         const { frameConfig } = window.mixedViewData || { frameConfig: {} };
+        const restoreTasks = [];
         for (let i = currentCount; i < newTotalFrames; i++) {
-            const wrapper = createFrameWrapper(i, allItems, frameConfig);
-            grid.appendChild(wrapper);
+            const frameData = createFrameWrapper(i, allItems, frameConfig);
+            grid.appendChild(frameData.wrapper);
+            if (frameData.restoreUrl) {
+                restoreTasks.push({
+                    wrapper: frameData.wrapper,
+                    url: frameData.restoreUrl
+                });
+            }
+        }
+
+        if (restoreTasks.length > 0) {
+            scheduleFrameRestore(restoreTasks);
         }
     } else if (newTotalFrames < currentCount) {
         // Remove excess frames

@@ -37,12 +37,69 @@ const CURRENT_CONFIG = SERVICE_CONFIG[SERVICE_TYPE] || SERVICE_CONFIG.gemini;
 const FRAME_SEND_INTERVAL_DEFAULT_MS = 100;
 const FRAME_SEND_INTERVAL_MIN_MS = 50;
 const FRAME_SEND_INTERVAL_MAX_MS = 5000;
+const FRAME_RESTORE_INTERVAL_MS = 250;
 const CHATGPT_SEND_BUTTON_RETRY_COUNT = 4;
 const CHATGPT_SEND_BUTTON_RETRY_INTERVAL_MS = 80;
 const sequentialSendQueueByService = {
     gemini: Promise.resolve(),
     chatgpt: Promise.resolve()
 };
+const frameRestoreQueueByService = {
+    gemini: Promise.resolve(),
+    chatgpt: Promise.resolve()
+};
+
+function normalizeStoredUrl(value) {
+    if (typeof value !== 'string') return '';
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : '';
+}
+
+function persistFrameUrl(index, url) {
+    const normalizedUrl = normalizeStoredUrl(url);
+    if (!normalizedUrl || normalizedUrl === 'about:blank') return;
+
+    chrome.storage.local.get([CURRENT_CONFIG.frameConfigKey], (res) => {
+        const cfg = res[CURRENT_CONFIG.frameConfigKey] || {};
+        if (cfg[index] === normalizedUrl) return;
+        cfg[index] = normalizedUrl;
+        chrome.storage.local.set({ [CURRENT_CONFIG.frameConfigKey]: cfg });
+    });
+}
+
+function findBestMatchingGemUrlByCurrentUrl(currentUrl, gems) {
+    const normalizedUrl = normalizeStoredUrl(currentUrl);
+    if (!normalizedUrl || !Array.isArray(gems)) return '';
+
+    const sortedGems = [...gems].sort((a, b) => (b.url || '').length - (a.url || '').length);
+    const match = sortedGems.find(g => normalizedUrl.includes(g.url));
+    return match ? match.url : '';
+}
+
+function scheduleSequentialFrameRestore(serviceType, tasks) {
+    if (!Array.isArray(tasks) || tasks.length === 0) return;
+    if (!frameRestoreQueueByService[serviceType]) return;
+
+    frameRestoreQueueByService[serviceType] = frameRestoreQueueByService[serviceType]
+        .then(async () => {
+            for (let i = 0; i < tasks.length; i++) {
+                const task = tasks[i];
+                if (!task || !task.iframe || !task.url) continue;
+
+                task.iframe.src = task.url;
+                if (task.urlDisplay) {
+                    task.urlDisplay.value = task.url;
+                }
+
+                if (i < tasks.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, FRAME_RESTORE_INTERVAL_MS));
+                }
+            }
+        })
+        .catch((error) => {
+            console.error(`[${serviceType}] Sequential frame restore queue error:`, error);
+        });
+}
 
 if (isTopLevel) {
     console.log(`[${CURRENT_CONFIG.serviceName}] Checking if multi-view is enabled...`);
@@ -371,14 +428,15 @@ function initController() {
                     // Update display
                     const wrapper = iframe.closest('.mgem-frame-wrapper');
                     if (wrapper) {
+                        const normalizedFrameUrl = normalizeStoredUrl(data.url);
                         const display = wrapper.querySelector('.mgem-url-display');
-                        if (display) display.value = data.url;
+                        if (display && normalizedFrameUrl) display.value = normalizedFrameUrl;
 
                         // Auto-Select Gem Logic
-                        getActiveGems((gems, config) => {
+                        getActiveGems((gems) => {
                             // Sort gems by URL length desc to match most specific first
-                            const sortedGems = [...gems].sort((a, b) => b.url.length - a.url.length);
-                            const match = sortedGems.find(g => data.url.includes(g.url));
+                            const sortedGems = [...gems].sort((a, b) => (b.url || '').length - (a.url || '').length);
+                            const match = sortedGems.find(g => normalizedFrameUrl.includes(g.url));
 
                             let targetUrl = CURRENT_CONFIG.defaultUrl; // Default
                             if (match) {
@@ -407,16 +465,11 @@ function initController() {
                                 const select = customSelectNode._customSelectObject;
                                 if (select.getValue() !== targetUrl) {
                                     select.setValue(targetUrl);
-
-                                    // Update Storage (use service-specific key)
-                                    chrome.storage.local.get([CURRENT_CONFIG.frameConfigKey], (res) => {
-                                        const cfg = res[CURRENT_CONFIG.frameConfigKey] || {};
-                                        if (cfg[index] !== targetUrl) {
-                                            cfg[index] = targetUrl;
-                                            chrome.storage.local.set({ [CURRENT_CONFIG.frameConfigKey]: cfg });
-                                        }
-                                    });
                                 }
+                            }
+
+                            if (normalizedFrameUrl) {
+                                persistFrameUrl(index, normalizedFrameUrl);
                             }
                         });
                     }
@@ -459,6 +512,9 @@ function createFrame(index, container, gems, config) {
     wrapper.className = 'mgem-frame-wrapper';
     wrapper.id = `wrapper-${index}`;
 
+    const savedUrl = normalizeStoredUrl(config[index]);
+    const matchedGemUrl = findBestMatchingGemUrlByCurrentUrl(savedUrl, gems);
+
     // Header
     const header = document.createElement('div');
     header.className = 'mgem-frame-header';
@@ -470,7 +526,7 @@ function createFrame(index, container, gems, config) {
     const customSelect = new CustomSearchSelect({
         items: selectItems,
         placeholder: `-- Select a ${CURRENT_CONFIG.itemName} --`,
-        value: '', // ALWAYS start with placeholder selected
+        value: matchedGemUrl || '',
         onChange: (e) => {
             const newUrl = e.target.value;
             const iframe = wrapper.querySelector('iframe');
@@ -478,12 +534,8 @@ function createFrame(index, container, gems, config) {
                 iframe.src = newUrl;
             }
 
-            // Save to frameConfig (use service-specific key)
-            chrome.storage.local.get([CURRENT_CONFIG.frameConfigKey], (res) => {
-                const cfg = res[CURRENT_CONFIG.frameConfigKey] || {};
-                cfg[index] = newUrl;
-                chrome.storage.local.set({ [CURRENT_CONFIG.frameConfigKey]: cfg });
-            });
+            // Save selected URL immediately for refresh/new tab restore
+            persistFrameUrl(index, newUrl);
         }
     });
 
@@ -491,15 +543,12 @@ function createFrame(index, container, gems, config) {
     // Cache the object instance on the element for easy access later
     selectElement._customSelectObject = customSelect;
 
-    // Special case: First frame (index 0) should auto-load default Gemini Gem
-    let shouldAutoLoad = false;
-    let autoLoadUrl = '';
-
-    if (index === 0) {
+    // Restore saved URL first. If missing, keep first-frame default behavior.
+    let autoLoadUrl = savedUrl;
+    if (!autoLoadUrl && index === 0) {
         const defaultGem = gems.find(g => g.url === CURRENT_CONFIG.defaultUrl);
         if (defaultGem) {
             customSelect.setValue(defaultGem.url);
-            shouldAutoLoad = true;
             autoLoadUrl = defaultGem.url;
         }
     }
@@ -511,12 +560,14 @@ function createFrame(index, container, gems, config) {
     refreshBtn.style.cssText = "background: transparent; border: none; color: #888; cursor: pointer; font-size: 16px; margin-left: 5px; padding: 2px 5px;";
 
     refreshBtn.onclick = () => {
-        const currentUrl = customSelect.getValue();
         const iframe = wrapper.querySelector('iframe');
-        if (iframe && currentUrl) {
-            // Force reload by setting src again
-            iframe.src = currentUrl;
-        }
+        if (!iframe) return;
+
+        const selectedGemUrl = normalizeStoredUrl(customSelect.getValue());
+        if (!selectedGemUrl) return;
+
+        iframe.src = selectedGemUrl;
+        persistFrameUrl(index, selectedGemUrl);
     };
 
     // URL Display
@@ -524,7 +575,7 @@ function createFrame(index, container, gems, config) {
     urlDisplay.type = 'text';
     urlDisplay.className = 'mgem-url-display';
     urlDisplay.readOnly = true;
-    urlDisplay.value = `No ${CURRENT_CONFIG.itemName} selected`;
+    urlDisplay.value = autoLoadUrl || `No ${CURRENT_CONFIG.itemName} selected`;
 
     // Maximize Button
     const maxBtn = document.createElement('button');
@@ -562,18 +613,14 @@ function createFrame(index, container, gems, config) {
     wrapper.appendChild(header);
 
     const iframe = document.createElement('iframe');
-    // Auto-load first frame with default Gemini Gem, others start blank
-    iframe.src = shouldAutoLoad ? autoLoadUrl : 'about:blank';
+    iframe.src = 'about:blank';
     iframe.id = `gem-frame-${index}`;
     iframe.allow = "clipboard-read; clipboard-write; microphone";
 
     wrapper.appendChild(iframe);
     container.appendChild(wrapper);
 
-    // Update URL display for first frame
-    if (shouldAutoLoad) {
-        urlDisplay.value = 'Loading...';
-    }
+    return { iframe, url: autoLoadUrl, urlDisplay };
 }
 
 function updateAllFrameSelects(gems) {
@@ -643,11 +690,20 @@ function ensureFrameCount(container, count) {
         console.log('[MGem] Need to add', count - currentCount, 'frames');
         getActiveGems((gems, config) => {
             console.log('[MGem] Creating frames with gems:', gems);
+            const restoreTasks = [];
             for (let i = 0; i < count - currentCount; i++) {
                 const newIndex = currentCount + i;
                 console.log('[MGem] Creating frame', newIndex);
-                createFrame(newIndex, container, gems, config);
+                const frameData = createFrame(newIndex, container, gems, config);
+                if (frameData.url) {
+                    restoreTasks.push(frameData);
+                }
             }
+
+            if (restoreTasks.length > 0) {
+                scheduleSequentialFrameRestore(SERVICE_TYPE, restoreTasks);
+            }
+
             console.log('[MGem] Frames created. Total:', container.querySelectorAll('.mgem-frame-wrapper').length);
         });
     }
