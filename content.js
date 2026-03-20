@@ -34,9 +34,7 @@ const SERVICE_CONFIG = {
 };
 
 const CURRENT_CONFIG = SERVICE_CONFIG[SERVICE_TYPE] || SERVICE_CONFIG.gemini;
-const FRAME_SEND_INTERVAL_DEFAULT_MS = 100;
-const FRAME_SEND_INTERVAL_MIN_MS = 50;
-const FRAME_SEND_INTERVAL_MAX_MS = 5000;
+const FRAME_SEND_INTERVAL_FIXED_MS = 250;
 const FRAME_RESTORE_INTERVAL_MS = 250;
 const CHATGPT_SEND_BUTTON_RETRY_COUNT = 4;
 const CHATGPT_SEND_BUTTON_RETRY_INTERVAL_MS = 80;
@@ -204,8 +202,7 @@ function initController() {
 
             if (SERVICE_TYPE === 'gemini' || SERVICE_TYPE === 'chatgpt') {
                 const targetIndices = resolveTargetFrameIndices(message.target);
-                const sendIntervalMs = sanitizeFrameSendInterval(message.sendIntervalMs);
-                scheduleSequentialSend(SERVICE_TYPE, targetIndices, payload, sendIntervalMs);
+                scheduleSequentialSend(SERVICE_TYPE, targetIndices, payload);
             } else {
                 if (Array.isArray(message.target)) {
                     message.target.forEach(targetIndex => {
@@ -741,13 +738,7 @@ function resolveTargetFrameIndices(target) {
     return Number.isNaN(single) ? [] : [single];
 }
 
-function sanitizeFrameSendInterval(value) {
-    const parsed = parseInt(value, 10);
-    if (Number.isNaN(parsed)) return FRAME_SEND_INTERVAL_DEFAULT_MS;
-    return Math.max(FRAME_SEND_INTERVAL_MIN_MS, Math.min(FRAME_SEND_INTERVAL_MAX_MS, parsed));
-}
-
-function scheduleSequentialSend(serviceType, targetIndices, payload, sendIntervalMs = FRAME_SEND_INTERVAL_DEFAULT_MS) {
+function scheduleSequentialSend(serviceType, targetIndices, payload) {
     if (!Array.isArray(targetIndices) || targetIndices.length === 0) return;
     if (!sequentialSendQueueByService[serviceType]) return;
 
@@ -759,7 +750,7 @@ function scheduleSequentialSend(serviceType, targetIndices, payload, sendInterva
                 postTriggerSendToFrame(uniqueIndices[i], payload);
 
                 if (i < uniqueIndices.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, sendIntervalMs));
+                    await new Promise(resolve => setTimeout(resolve, FRAME_SEND_INTERVAL_FIXED_MS));
                 }
             }
         })

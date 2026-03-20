@@ -23,16 +23,8 @@ const SERVICE_CONFIG = {
 };
 
 let currentService = null;
-const SERVICE_SEND_INTERVAL_KEY = {
-    gemini: 'geminiSendIntervalMs',
-    chatgpt: 'chatgptSendIntervalMs'
-};
 const MIXED_VIEW_LAYOUT_KEY = 'mixedViewLayout';
 const MIXED_TARGET_SELECTION_KEY = 'mixed_targetSelection';
-const MIXED_SEND_INTERVAL_KEY = 'mixedSendIntervalMs';
-const SEND_INTERVAL_DEFAULT_MS = 100;
-const SEND_INTERVAL_MIN_MS = 50;
-const SEND_INTERVAL_MAX_MS = 5000;
 
 document.addEventListener('DOMContentLoaded', () => {
     // Detect current service from active tab
@@ -94,14 +86,6 @@ function showMixedViewSettings() {
     const targetCheckboxes = document.getElementById('mixed-target-checkboxes');
     const globalInput = document.getElementById('mixed-global-input');
     const globalSendBtn = document.getElementById('mixed-global-send-btn');
-    const sendIntervalInput = document.getElementById('mixed-send-interval-ms');
-
-    const saveSendInterval = () => {
-        if (!sendIntervalInput) return;
-        const sanitized = sanitizeSendInterval(sendIntervalInput.value);
-        sendIntervalInput.value = sanitized;
-        chrome.storage.local.set({ [MIXED_SEND_INTERVAL_KEY]: sanitized });
-    };
 
     const sendMixedGlobalMessage = () => {
         if (!targetCheckboxes || !globalInput) return;
@@ -115,17 +99,12 @@ function showMixedViewSettings() {
 
         if (checkedFrames.length === 0) return;
 
-        const sendIntervalMs = sendIntervalInput
-            ? sanitizeSendInterval(sendIntervalInput.value)
-            : SEND_INTERVAL_DEFAULT_MS;
-
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs[0]) {
                 chrome.tabs.sendMessage(tabs[0].id, {
                     type: 'GLOBAL_TRIGGER_SEND',
                     target: checkedFrames,
-                    text,
-                    sendIntervalMs
+                    text
                 });
             }
         });
@@ -133,7 +112,7 @@ function showMixedViewSettings() {
         globalInput.value = '';
     };
 
-    chrome.storage.local.get([MIXED_VIEW_LAYOUT_KEY, MIXED_TARGET_SELECTION_KEY, MIXED_SEND_INTERVAL_KEY], (result) => {
+    chrome.storage.local.get([MIXED_VIEW_LAYOUT_KEY, MIXED_TARGET_SELECTION_KEY], (result) => {
         const savedLayout = result[MIXED_VIEW_LAYOUT_KEY] || '2x2';
         const [rows, cols] = savedLayout.split('x').map(Number);
         rowsInput.value = rows;
@@ -141,12 +120,6 @@ function showMixedViewSettings() {
 
         if (targetCheckboxes) {
             updateTargetCheckboxes(savedLayout, targetCheckboxes, result[MIXED_TARGET_SELECTION_KEY], 'mixed');
-        }
-
-        if (sendIntervalInput) {
-            sendIntervalInput.value = sanitizeSendInterval(result[MIXED_SEND_INTERVAL_KEY]);
-            sendIntervalInput.addEventListener('change', saveSendInterval);
-            sendIntervalInput.addEventListener('blur', saveSendInterval);
         }
 
         if (globalSendBtn) {
@@ -225,14 +198,9 @@ function initServiceSettings(service) {
     const colsInput = document.getElementById(`${prefix}-custom-cols`);
     const enabledToggle = document.getElementById(`${prefix}-enabled-toggle`);
     const configPanel = document.getElementById(`${prefix}-config-panel`);
-    const sendIntervalInput = document.getElementById(`${prefix}-send-interval-ms`);
-    const sendIntervalStorageKey = SERVICE_SEND_INTERVAL_KEY[service];
 
     // Load saved settings
     const storageKeys = [config.storageKey, config.layoutKey, config.enabledKey, `${prefix}_targetSelection`];
-    if (sendIntervalStorageKey) {
-        storageKeys.push(sendIntervalStorageKey);
-    }
 
     chrome.storage.local.get(storageKeys, (result) => {
         let gems = result[config.storageKey] || [];
@@ -245,9 +213,6 @@ function initServiceSettings(service) {
         const savedLayout = result[config.layoutKey] || '1x1';
         const isEnabled = result[config.enabledKey] !== false; // default to true
         const savedSelection = result[`${prefix}_targetSelection`];
-        const savedSendInterval = sendIntervalStorageKey
-            ? sanitizeSendInterval(result[sendIntervalStorageKey])
-            : SEND_INTERVAL_DEFAULT_MS;
 
         // Set toggle state
         enabledToggle.checked = isEnabled;
@@ -257,19 +222,6 @@ function initServiceSettings(service) {
 
         gems.forEach(gem => addGemInput(gem.name, gem.url, prefix, container, config));
         updateLayoutButtons(savedLayout, rowsInput, colsInput);
-
-        if (sendIntervalInput && sendIntervalStorageKey) {
-            sendIntervalInput.value = savedSendInterval;
-
-            const saveSendInterval = () => {
-                const sanitized = sanitizeSendInterval(sendIntervalInput.value);
-                sendIntervalInput.value = sanitized;
-                chrome.storage.local.set({ [sendIntervalStorageKey]: sanitized });
-            };
-
-            sendIntervalInput.addEventListener('change', saveSendInterval);
-            sendIntervalInput.addEventListener('blur', saveSendInterval);
-        }
 
         // Setup Global Input UI (if it exists for this service)
         const targetCheckboxes = document.getElementById(`${prefix}-target-checkboxes`);
@@ -296,10 +248,6 @@ function initServiceSettings(service) {
                             target: checkedFrames,
                             text: text
                         };
-
-                        if (sendIntervalInput) {
-                            requestPayload.sendIntervalMs = sanitizeSendInterval(sendIntervalInput.value);
-                        }
 
                         chrome.tabs.sendMessage(tabs[0].id, requestPayload, (response) => {
                             if (chrome.runtime.lastError) {
@@ -598,12 +546,6 @@ function updateTargetSelect(layout, selectElement) {
     } else {
         selectElement.value = 'all';
     }
-}
-
-function sanitizeSendInterval(value) {
-    const parsed = parseInt(value, 10);
-    if (Number.isNaN(parsed)) return SEND_INTERVAL_DEFAULT_MS;
-    return Math.max(SEND_INTERVAL_MIN_MS, Math.min(SEND_INTERVAL_MAX_MS, parsed));
 }
 
 function addGemInput(nameValue, urlValue, prefix, container, config) {

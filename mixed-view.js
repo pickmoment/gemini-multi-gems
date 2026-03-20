@@ -20,9 +20,7 @@ const SERVICE_CONFIG = {
 const MIXED_VIEW_LAYOUT_KEY = 'mixedViewLayout';
 const MIXED_VIEW_FRAME_CONFIG_KEY = 'mixedViewFrameConfig';
 const FRAME_RESTORE_INTERVAL_MS = 250;
-const FRAME_SEND_INTERVAL_DEFAULT_MS = 100;
-const FRAME_SEND_INTERVAL_MIN_MS = 50;
-const FRAME_SEND_INTERVAL_MAX_MS = 5000;
+const FRAME_SEND_INTERVAL_FIXED_MS = 250;
 let mixedViewSendQueue = Promise.resolve();
 let mixedViewRestoreQueue = Promise.resolve();
 
@@ -442,13 +440,7 @@ function resolveTargetFrameIndices(target) {
     return Number.isNaN(single) ? [] : [single];
 }
 
-function sanitizeSendInterval(value) {
-    const parsed = parseInt(value, 10);
-    if (Number.isNaN(parsed)) return FRAME_SEND_INTERVAL_DEFAULT_MS;
-    return Math.max(FRAME_SEND_INTERVAL_MIN_MS, Math.min(FRAME_SEND_INTERVAL_MAX_MS, parsed));
-}
-
-function scheduleSequentialSend(targetIndices, payload, sendIntervalMs = FRAME_SEND_INTERVAL_DEFAULT_MS) {
+function scheduleSequentialSend(targetIndices, payload) {
     if (!Array.isArray(targetIndices) || targetIndices.length === 0) return;
 
     const uniqueIndices = [...new Set(targetIndices)];
@@ -459,7 +451,7 @@ function scheduleSequentialSend(targetIndices, payload, sendIntervalMs = FRAME_S
                 postTriggerSendToFrame(uniqueIndices[i], payload);
 
                 if (i < uniqueIndices.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, sendIntervalMs));
+                    await new Promise(resolve => setTimeout(resolve, FRAME_SEND_INTERVAL_FIXED_MS));
                 }
             }
         })
@@ -476,8 +468,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else if (message.type === 'GLOBAL_TRIGGER_SEND') {
         const payload = { type: 'TRIGGER_SEND', text: message.text };
         const targetIndices = resolveTargetFrameIndices(message.target);
-        const sendIntervalMs = sanitizeSendInterval(message.sendIntervalMs);
-        scheduleSequentialSend(targetIndices, payload, sendIntervalMs);
+        scheduleSequentialSend(targetIndices, payload);
         sendResponse({ success: true });
     } else if (message.type === 'UPDATE_LAYOUT') {
         console.log('[Mixed View] Updating layout to:', message.layout);
